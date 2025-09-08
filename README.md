@@ -44,6 +44,11 @@ python app.py
 - Não compartilhe `credentials.json` ou `token.json` publicamente.
 - O banco de dados (`file_index.db`) e a pasta de miniaturas (`thumbnails_cache/`) são gerados automaticamente.
 - Para dúvidas ou sugestões, abra uma issue no GitHub.
+- Atenção:
+Para acessar arquivos do Google Drive, é obrigatório adicionar o arquivo credentials.json na pasta do aplicativo.
+Este arquivo deve ser gerado no Google Cloud Console, ativando a API do Google Drive e criando credenciais do tipo "Aplicativo para área de trabalho".
+Para testes internos, solicite o arquivo ao responsável pelo projeto.
+Não compartilhe nem publique o credentials.json em locais públicos.
 
 ## Licença
 
