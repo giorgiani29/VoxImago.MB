@@ -8,7 +8,44 @@ Busca unificada de arquivos locais e Google Drive com filtros avançados, favori
 - **Novo ponto de entrada:** O aplicativo agora é iniciado pelo arquivo `main.py`, que centraliza a inicialização da interface gráfica.
 - **Sincronização aprimorada:** Métodos de busca e sincronização foram revisados para maior eficiência e clareza, buscando separadamente seus arquivos do Google Drive e arquivos explicitamente compartilhados com você.
 - **Performance:** Estrutura preparada para otimizações futuras, como commits em lote no banco de dados e redução de travamentos ao lidar com grandes volumes de arquivos.
+## Otimizações Implementadas
 
+### 1. Índices e PRAGMA no SQLite
+- Índices criados para os principais campos de busca e filtro (`source`, `parentId`, `mimeType`, `starred`, `name`).
+- PRAGMA otimizados: `journal_mode=WAL`, `synchronous=NORMAL`, `temp_store=MEMORY`, `cache_size=5000`.
+
+### 2. Conexões SQLite por Thread
+- Cada worker/thread abre sua própria conexão SQLite, aplicando PRAGMA para performance.
+
+### 3. Pool Controlado de Miniaturas
+- Uso de `QThreadPool` com limite de threads para baixar miniaturas em paralelo de forma controlada.
+
+### 4. Cache de Miniaturas por Hash
+- Chave de cache baseada em `(path, mtime, size)` para arquivos locais e `(file_id, modifiedTime)` para arquivos do Google Drive.
+
+---
+
+## Otimizações Parcialmente Implementadas
+
+### 1. Escaneamento Local em Batches
+- Inserção em lote já ocorre, mas pode ser ajustada para batches de 500 registros e commit a cada lote.
+
+### 2. Sincronização Incremental do Google Drive
+- Sincronização considera o timestamp da última sync, mas precisa garantir busca apenas de arquivos modificados após esse ponto.
+
+### 3. Melhorias de Autocomplete
+- Sugestões de busca com debounce já presentes, mas precisam ser limitadas para textos com 3 ou mais caracteres.
+
+### 4. Limpeza de Código Duplicado
+- Algumas funções duplicadas ainda existem e precisam ser removidas.
+
+---
+
+## Otimizações Pendentes
+
+- Migrar UI para `QListView` + `QAbstractListModel` para melhor escalabilidade.
+- Implementar lazy loading de thumbnails (miniaturas apenas para itens visíveis).
+- Adicionar logs de tempo e profiling (`cProfile`, `snakeviz`) para análise de performance.
 ## Funcionalidades
 
 - Busca por nome, descrição, frases entre aspas, OR, e exclusão de termos (-palavra)
