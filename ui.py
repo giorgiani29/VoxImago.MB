@@ -18,18 +18,22 @@ from PyQt6.QtWidgets import (
     QFormLayout, QSplitter, QDateEdit
 )
 from PyQt6.QtGui import QPixmap, QFont
-from PyQt6.QtCore import Qt, QTimer, QStringListModel, QDate, QThread, pyqtSignal
+from PyQt6.QtCore import Qt, QTimer, QStringListModel, QDate, QThread, pyqtSignal, QThreadPool
 
 from database import FileIndexer
 from widgets import OptionsDialog, FileItemWidget, DownloadProgressDialog
 from utils import format_size, get_generic_thumbnail, load_settings, save_settings
 from utils import SETTINGS_FILE as TOKEN_FILE
 
+
 class DriveFileGalleryApp(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("VoxImago - Galeria de Arquivos")
         self.setMinimumSize(600, 400)
+
+        self.thread_pool = QThreadPool.globalInstance()
+        self.thread_pool.setMaxThreadCount(8)
 
         self.service = None
         self.indexer = FileIndexer()
@@ -58,7 +62,7 @@ class DriveFileGalleryApp(QMainWindow):
         self.suggestion_timer = QTimer()
         self.suggestion_timer.setSingleShot(True)
         self.suggestion_timer.timeout.connect(self.update_search_suggestions)
-        
+
         self.completer_model = QStringListModel()
 
         self._setup_ui()
@@ -74,7 +78,7 @@ class DriveFileGalleryApp(QMainWindow):
 
         self._check_initial_auth()
         self.extension_combo.setCurrentIndex(0)
-        
+
     def closeEvent(self, event):
         for i in range(self.files_layout.count()):
             item = self.files_layout.itemAt(i)
@@ -86,7 +90,7 @@ class DriveFileGalleryApp(QMainWindow):
             self.local_scan_worker.stop()
             self.local_scan_thread.quit()
             self.local_scan_thread.wait()
-        
+
         if self.drive_sync_thread and self.drive_sync_thread.isRunning():
             self.drive_sync_thread.quit()
             self.drive_sync_thread.wait()
@@ -111,7 +115,7 @@ class DriveFileGalleryApp(QMainWindow):
         self.app_title_label.setFont(QFont("Arial", 12, QFont.Weight.Bold))
         unified_layout.addWidget(self.app_title_label)
         unified_layout.addSpacing(15)
-        
+
         self.view_label = QLabel("Visualizando: Local")
         self.view_label.setFixedWidth(150)
         unified_layout.addWidget(self.view_label)
@@ -129,7 +133,7 @@ class DriveFileGalleryApp(QMainWindow):
         self.search_entry.textChanged.connect(self.handle_search_input)
         unified_layout.addWidget(self.search_entry)
         unified_layout.addStretch()
-        
+
         self.filter_combo = QComboBox()
         self.filter_combo.addItem("Todos os Tipos", "all")
         self.filter_combo.addItem("Imagens", "image")
@@ -147,7 +151,7 @@ class DriveFileGalleryApp(QMainWindow):
         self.sort_combo.addItem("Tamanho (Maior)", "size_desc")
         self.sort_combo.activated.connect(self.change_sort_order)
         self.sort_combo.setEnabled(False)
-        
+
         unified_layout.addWidget(QLabel("Filtrar:"))
         unified_layout.addWidget(self.filter_combo)
         unified_layout.addSpacing(10)
@@ -163,7 +167,8 @@ class DriveFileGalleryApp(QMainWindow):
         self.modified_after_date.setDate(QDate.currentDate().addDays(-7))
         self.modified_after_date.setCalendarPopup(True)
         self.apply_advanced_filter_button = QPushButton("Aplicar Filtros")
-        self.apply_advanced_filter_button.clicked.connect(self.apply_advanced_filters)
+        self.apply_advanced_filter_button.clicked.connect(
+            self.apply_advanced_filters)
         self.created_after_date = QDateEdit()
         self.created_after_date.setDate(QDate.currentDate().addDays(-7))
         self.created_after_date.setCalendarPopup(True)
@@ -172,7 +177,8 @@ class DriveFileGalleryApp(QMainWindow):
         self.created_before_date.setCalendarPopup(True)
 
         self.clear_advanced_filter_button = QPushButton("Limpar Filtros")
-        self.clear_advanced_filter_button.clicked.connect(self.clear_advanced_filters)
+        self.clear_advanced_filter_button.clicked.connect(
+            self.clear_advanced_filters)
 
         self.advanced_filter_layout.addWidget(QLabel("Extensão:"))
         self.advanced_filter_layout.addWidget(self.extension_combo)
@@ -184,14 +190,15 @@ class DriveFileGalleryApp(QMainWindow):
         self.advanced_filter_layout.addWidget(self.modified_after_date)
         self.starred_checkbox = QCheckBox("Favoritos")
         self.advanced_filter_layout.addWidget(self.starred_checkbox)
-        self.advanced_filter_layout.addWidget(self.apply_advanced_filter_button)
-        self.advanced_filter_layout.addWidget(self.clear_advanced_filter_button)
-
+        self.advanced_filter_layout.addWidget(
+            self.apply_advanced_filter_button)
+        self.advanced_filter_layout.addWidget(
+            self.clear_advanced_filter_button)
 
         main_layout.addLayout(self.advanced_filter_layout)
 
         unified_layout.addStretch()
-        
+
         self.scan_options_button = QPushButton("Pastas Locais")
         self.scan_options_button.clicked.connect(self._show_scan_options)
 
@@ -200,7 +207,7 @@ class DriveFileGalleryApp(QMainWindow):
 
         self.logout_button = QPushButton("Logout")
         self.logout_button.clicked.connect(self.handle_logout)
-        
+
         self.auth_status_label = QLabel("Verificando...")
         self.auth_status_label.setFixedWidth(150)
 
@@ -211,35 +218,35 @@ class DriveFileGalleryApp(QMainWindow):
         self.completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
         self.completer.setFilterMode(Qt.MatchFlag.MatchContains)
         self.search_entry.setCompleter(self.completer)
-        
+
         unified_layout.addWidget(self.scan_options_button)
         unified_layout.addWidget(self.auth_status_label)
         unified_layout.addWidget(self.login_button)
         unified_layout.addWidget(self.logout_button)
         unified_layout.addWidget(self.clear_cache_button)
-        
+
         main_layout.addWidget(unified_bar)
-        
+
         self.splitter = QSplitter(Qt.Orientation.Horizontal)
-        
+
         self.scroll_area = QScrollArea()
         self.scroll_area.setWidgetResizable(True)
         self.scroll_content = QWidget()
-        
+
         self.files_layout = QVBoxLayout(self.scroll_content)
         self.files_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
-        
+
         self.scroll_content.setLayout(self.files_layout)
         self.scroll_area.setWidget(self.scroll_content)
-        
+
         self.details_panel = FileDetailsPanel(self)
-        
+
         self.splitter.addWidget(self.scroll_area)
         self.splitter.addWidget(self.details_panel)
         self.details_panel.setMinimumWidth(320)
         self.details_panel.setMaximumWidth(340)
         self.splitter.setSizes([900, 340])
-        
+
         main_layout.addWidget(self.splitter)
 
         self.loading_label = QLabel("Carregando...")
@@ -260,16 +267,20 @@ class DriveFileGalleryApp(QMainWindow):
         self.all_loaded_label.setFixedHeight(30)
         self.all_loaded_label.hide()
         main_layout.addWidget(self.all_loaded_label)
-        
+
         self.update_ui_for_auth_state(False)
         self.update_ui_for_view()
         self.update_filter_buttons()
         self.update_breadcrumb()
 
-        self.extension_combo.currentIndexChanged.connect(self.apply_advanced_filters)
-        self.modified_after_date.dateChanged.connect(self.apply_advanced_filters)
-        self.created_after_date.dateChanged.connect(self.apply_advanced_filters)
-        self.created_before_date.dateChanged.connect(self.apply_advanced_filters)
+        self.extension_combo.currentIndexChanged.connect(
+            self.apply_advanced_filters)
+        self.modified_after_date.dateChanged.connect(
+            self.apply_advanced_filters)
+        self.created_after_date.dateChanged.connect(
+            self.apply_advanced_filters)
+        self.created_before_date.dateChanged.connect(
+            self.apply_advanced_filters)
         self.starred_checkbox.stateChanged.connect(self.apply_advanced_filters)
 
     def _populate_extension_combo(self):
@@ -339,12 +350,15 @@ class DriveFileGalleryApp(QMainWindow):
             if item and item.widget():
                 item.widget().deleteLater()
 
-        breadcrumb = self.indexer.get_breadcrumb(self.current_folder_id, self.current_view)
+        breadcrumb = self.indexer.get_breadcrumb(
+            self.current_folder_id, self.current_view)
         for i, crumb in enumerate(breadcrumb):
             label = ClickableLabel(crumb['name'])
-            label.setStyleSheet("font-weight: bold; text-decoration: underline;")
+            label.setStyleSheet(
+                "font-weight: bold; text-decoration: underline;")
             label.setCursor(Qt.CursorShape.PointingHandCursor)
-            label.clicked.connect(lambda checked=False, fid=crumb['id']: self.navigate_to_folder(fid))
+            label.clicked.connect(lambda checked=False,
+                                  fid=crumb['id']: self.navigate_to_folder(fid))
             self.breadcrumb_layout.addWidget(label)
             if i < len(breadcrumb) - 1:
                 self.breadcrumb_layout.addWidget(QLabel(" > "))
@@ -373,7 +387,7 @@ class DriveFileGalleryApp(QMainWindow):
         is_searching = bool(self.search_term)
         self.filter_combo.setEnabled(not is_searching)
         self.sort_combo.setEnabled(not is_searching)
-        
+
     def update_ui_for_view(self):
         if self.current_view is None:
             view_name = "Unificado"
@@ -414,7 +428,7 @@ class DriveFileGalleryApp(QMainWindow):
             self.current_folder_id = None
             self.clear_display()
             self.load_next_batch()
-            
+
         self.update_filter_buttons()
         self.update_ui_for_view()
 
@@ -424,7 +438,8 @@ class DriveFileGalleryApp(QMainWindow):
             self.completer_model.setStringList([])
             return
 
-        suggestions = self.indexer.get_search_suggestions(text, self.is_authenticated)
+        suggestions = self.indexer.get_search_suggestions(
+            text, self.is_authenticated)
         self.completer_model.setStringList(suggestions)
 
     def handle_search_request(self):
@@ -447,7 +462,8 @@ class DriveFileGalleryApp(QMainWindow):
 
     def _show_scan_options(self):
         if self.local_scan_thread and self.local_scan_thread.isRunning():
-            QMessageBox.warning(self, "Aviso", "Aguarde a conclusão do escaneamento local.")
+            QMessageBox.warning(
+                self, "Aviso", "Aguarde a conclusão do escaneamento local.")
             return
 
         dialog = OptionsDialog(self)
@@ -460,7 +476,8 @@ class DriveFileGalleryApp(QMainWindow):
             if selected_paths:
                 self._start_local_scan(selected_paths)
             else:
-                QMessageBox.information(self, "Aviso", "Nenhuma pasta selecionada. O escaneamento local não foi iniciado.")
+                QMessageBox.information(
+                    self, "Aviso", "Nenhuma pasta selecionada. O escaneamento local não foi iniciado.")
                 self.current_view = 'local'
                 self.load_next_batch()
 
@@ -470,12 +487,15 @@ class DriveFileGalleryApp(QMainWindow):
         self.all_loaded_label.hide()
 
         self.local_scan_thread = QThread()
-        self.local_scan_worker = LocalScanWorker(start_paths=paths_to_scan, db_name=self.indexer.db_name)
+        self.local_scan_worker = LocalScanWorker(
+            db_name=self.indexer.db_name, scan_path=paths_to_scan)
         self.local_scan_worker.moveToThread(self.local_scan_thread)
 
-        self.local_scan_worker.finished_signal.connect(self.on_local_scan_finished)
-        self.local_scan_worker.update_status_signal.connect(self.status_bar.showMessage)
-        self.local_scan_worker.progress_update.connect(self.update_local_scan_progress)
+        self.local_scan_worker.finished.connect(self.on_local_scan_finished)
+        self.local_scan_worker.update_status_signal.connect(
+            self.status_bar.showMessage)
+        self.local_scan_worker.progress_update.connect(
+            self.update_local_scan_progress)
 
         self.local_scan_thread.started.connect(self.local_scan_worker.run)
         self.local_scan_thread.start()
@@ -489,8 +509,8 @@ class DriveFileGalleryApp(QMainWindow):
         self.local_scan_thread.deleteLater()
         self.local_scan_worker = None
         self.local_scan_thread = None
-        
-        
+        self.current_folder_id = None
+
         self.current_view = 'local'
         self.advenced_filters = {}
         self.extension_combo.setCurrentIndex(0)
@@ -501,7 +521,8 @@ class DriveFileGalleryApp(QMainWindow):
         self.apply_advanced_filters()
 
     def update_local_scan_progress(self, files_found):
-        self.status_bar.showMessage(f"Escaneando... {files_found} arquivos encontrados.")
+        self.status_bar.showMessage(
+            f"Escaneando... {files_found} arquivos encontrados.")
 
     def _check_initial_auth(self):
         self.update_ui_for_auth_state(False)
@@ -515,7 +536,8 @@ class DriveFileGalleryApp(QMainWindow):
 
         if os.path.exists(TOKEN_FILE):
             try:
-                creds = Credentials.from_authorized_user_file(TOKEN_FILE, SCOPES)
+                creds = Credentials.from_authorized_user_file(
+                    TOKEN_FILE, SCOPES)
                 if not creds or not creds.valid or not creds.refresh_token or not creds.client_id or not creds.client_secret:
                     raise ValueError("Token inválido ou incompleto.")
             except Exception:
@@ -523,10 +545,12 @@ class DriveFileGalleryApp(QMainWindow):
 
         if not creds:
             if not os.path.exists(CREDENTIALS_FILE):
-                self.auth_status_label.setText("Arquivo credentials.json não encontrado.")
+                self.auth_status_label.setText(
+                    "Arquivo credentials.json não encontrado.")
                 self.load_next_batch()
                 return
-            flow = InstalledAppFlow.from_client_secrets_file(CREDENTIALS_FILE, SCOPES)
+            flow = InstalledAppFlow.from_client_secrets_file(
+                CREDENTIALS_FILE, SCOPES)
             creds = flow.run_local_server(port=0)
             with open(TOKEN_FILE, 'w') as token:
                 token.write(creds.to_json())
@@ -542,10 +566,12 @@ class DriveFileGalleryApp(QMainWindow):
 
     def _start_auth(self):
         if self.auth_thread and self.auth_thread.isRunning():
-            self.status_bar.showMessage("Processo de login já em andamento...", 5000)
+            self.status_bar.showMessage(
+                "Processo de login já em andamento...", 5000)
             return
 
-        self.status_bar.showMessage("Abrindo navegador para autenticação...", 5000)
+        self.status_bar.showMessage(
+            "Abrindo navegador para autenticação...", 5000)
         self.progress_bar.setVisible(True)
         self.progress_bar.setRange(0, 0)
         self.login_button.setEnabled(False)
@@ -563,7 +589,8 @@ class DriveFileGalleryApp(QMainWindow):
     def on_auth_success(self, creds):
         self.progress_bar.setVisible(False)
         self.login_button.setEnabled(True)
-        self.status_bar.showMessage("Login bem-sucedido. Sincronizando arquivos...", 5000)
+        self.status_bar.showMessage(
+            "Login bem-sucedido. Sincronizando arquivos...", 5000)
         self.auth_status_label.setText("Logado com Google")
         self.service = build('drive', 'v3', credentials=creds)
         self.update_ui_for_auth_state(True)
@@ -589,39 +616,46 @@ class DriveFileGalleryApp(QMainWindow):
         self.auth_thread.deleteLater()
         self.auth_worker = None
         self.auth_thread = None
-        
+
     def handle_logout(self):
         if os.path.exists(TOKEN_FILE):
             os.remove(TOKEN_FILE)
             self.status_bar.showMessage("Logout bem-sucedido.", 5000)
             self.service = None
-            self.indexer.cursor.execute("DELETE FROM files WHERE source='drive'")
-            self.indexer.cursor.execute("DELETE FROM search_index WHERE source='drive'")
+            self.indexer.cursor.execute(
+                "DELETE FROM files WHERE source='drive'")
+            self.indexer.cursor.execute(
+                "DELETE FROM search_index WHERE source='drive'")
             self.indexer.conn.commit()
             self.clear_display()
             self.update_ui_for_auth_state(False)
             self.auth_status_label.setText("Não Autenticado")
-            
+
             self.current_view = 'local'
             self.current_folder_id = None
             self.load_next_batch()
 
     def _start_drive_sync(self):
         if self.drive_sync_thread and self.drive_sync_thread.isRunning():
-            self.status_bar.showMessage("Sincronização do Drive já em andamento...", 5000)
+            self.status_bar.showMessage(
+                "Sincronização do Drive já em andamento...", 5000)
             return
 
         self.progress_bar.setVisible(True)
         self.progress_bar.setRange(0, 0)
 
         self.drive_sync_thread = QThread()
-        self.drive_sync_worker = DriveSyncWorker(self.service, db_name=self.indexer.db_name)
+        self.drive_sync_worker = DriveSyncWorker(
+            self.service, db_name=self.indexer.db_name)
         self.drive_sync_worker.moveToThread(self.drive_sync_thread)
 
-        self.drive_sync_worker.sync_finished.connect(self.on_drive_sync_finished)
+        self.drive_sync_worker.sync_finished.connect(
+            self.on_drive_sync_finished)
         self.drive_sync_worker.sync_failed.connect(self.on_drive_sync_failed)
-        self.drive_sync_worker.update_status.connect(self.status_bar.showMessage)
-        self.drive_sync_worker.progress_update.connect(self.update_drive_sync_progress)
+        self.drive_sync_worker.update_status.connect(
+            self.status_bar.showMessage)
+        self.drive_sync_worker.progress_update.connect(
+            self.update_drive_sync_progress)
 
         self.drive_sync_thread.started.connect(self.drive_sync_worker.run)
         self.drive_sync_thread.start()
@@ -658,7 +692,8 @@ class DriveFileGalleryApp(QMainWindow):
         self.update_ui_for_auth_state(False)
 
     def update_drive_sync_progress(self, current_value):
-        self.status_bar.showMessage(f"Sincronizando... {current_value} arquivos encontrados.")
+        self.status_bar.showMessage(
+            f"Sincronizando... {current_value} arquivos encontrados.")
         self.progress_bar.setRange(0, 0)
         self.progress_bar.setValue(current_value)
 
@@ -671,7 +706,7 @@ class DriveFileGalleryApp(QMainWindow):
                 if hasattr(widget, 'cleanup'):
                     widget.cleanup()
                 widget.deleteLater()
-        
+
         self.details_panel.hide()
 
     def load_next_batch(self):
@@ -681,13 +716,13 @@ class DriveFileGalleryApp(QMainWindow):
         self.is_loading = True
         self.loading_label.show()
         QApplication.processEvents()
-        
+
         search_all_sources = bool(self.search_term and self.is_authenticated)
         source = self.current_view if not search_all_sources else None
 
         start_time = time.time()
 
-        folder_id = self.current_folder_id 
+        folder_id = self.current_folder_id
         filter_type = self.current_filter
 
         if not self.search_term and folder_id is None:
@@ -713,7 +748,7 @@ class DriveFileGalleryApp(QMainWindow):
                         'drive', self.current_page, self.page_size, None, self.current_sort, filter_type, None, self.advanced_filters
                     )
                 files_to_add = local_files + drive_files
-    
+
             else:
                 filter_type = 'all'
                 local_files = self.indexer.load_files_paged(
@@ -732,9 +767,10 @@ class DriveFileGalleryApp(QMainWindow):
                 source, self.current_page, self.page_size, self.search_term,
                 self.current_sort, filter_type, folder_id, self.advanced_filters
             )
-        
+
         elapsed_time = time.time() - start_time
-        print(f"Tempo para carregar {len(files_to_add)} arquivos do banco de dados: {elapsed_time:.4f}s")
+        print(
+            f"Tempo para carregar {len(files_to_add)} arquivos do banco de dados: {elapsed_time:.4f}s")
 
         if not files_to_add:
             self.all_files_loaded = True
@@ -756,7 +792,8 @@ class DriveFileGalleryApp(QMainWindow):
 
     def _add_thumbnail_widgets(self, files_to_add):
         for item in files_to_add:
-            item_widget = FileItemWidget(self, item, self.service, self.status_bar.showMessage)
+            item_widget = FileItemWidget(
+                self, item, self.service, self.status_bar.showMessage)
             item_widget.selected.connect(self.details_panel.update_details)
             item_widget.folder_clicked.connect(self.navigate_to_folder)
             self.files_layout.addWidget(item_widget)
@@ -771,10 +808,12 @@ class DriveFileGalleryApp(QMainWindow):
             super().keyPressEvent(event)
 
     def go_to_parent_folder(self):
-        self.indexer.cursor.execute("SELECT parentId FROM files WHERE file_id = ?", (self.current_folder_id,))
+        self.indexer.cursor.execute(
+            "SELECT parentId FROM files WHERE file_id = ?", (self.current_folder_id,))
         row = self.indexer.cursor.fetchone()
         parent_id = row[0] if row else None
         self.navigate_to_folder(parent_id)
+
 
 class FileDetailsPanel(QFrame):
 
@@ -818,8 +857,10 @@ class FileDetailsPanel(QFrame):
         self.form_layout.addRow(QLabel("<b>Nome:</b>"), self.name_label)
         self.form_layout.addRow(QLabel("<b>Fonte:</b>"), self.source_label)
         self.form_layout.addRow(QLabel("<b>Tamanho:</b>"), self.size_label)
-        self.form_layout.addRow(QLabel("<b>Caminho/Link:</b>"), self.path_label)
-        self.form_layout.addRow(QLabel("<b>Descrição:</b>"), self.description_label)
+        self.form_layout.addRow(
+            QLabel("<b>Caminho/Link:</b>"), self.path_label)
+        self.form_layout.addRow(
+            QLabel("<b>Descrição:</b>"), self.description_label)
 
         self.download_button = QPushButton("Baixar Arquivo")
         self.download_button.setVisible(False)
@@ -843,7 +884,6 @@ class FileDetailsPanel(QFrame):
 
     def update_details(self, file_item):
 
-             
         if hasattr(self, 'thumbnail_thread') and self.thumbnail_thread:
             if self.thumbnail_thread.isRunning():
                 self.thumbnail_thread.quit()
@@ -853,13 +893,17 @@ class FileDetailsPanel(QFrame):
 
         self.title_label.setText("Detalhes do Arquivo")
         self.name_label.setText(file_item.get('name', 'N/A'))
-        self.source_label.setText("Google Drive" if file_item.get('source') == 'drive' else "Local")
-        self.size_label.setText(format_size(file_item.get('size', 0)) if file_item.get('mimeType') not in ['application/vnd.google-apps.folder', 'folder'] else "N/A")
-        self.path_label.setText(file_item.get('path', file_item.get('webViewLink', 'N/A')))
+        self.source_label.setText("Google Drive" if file_item.get(
+            'source') == 'drive' else "Local")
+        self.size_label.setText(format_size(file_item.get('size', 0)) if file_item.get(
+            'mimeType') not in ['application/vnd.google-apps.folder', 'folder'] else "N/A")
+        self.path_label.setText(file_item.get(
+            'path', file_item.get('webViewLink', 'N/A')))
         self.description_label.setText(file_item.get('description', 'N/A'))
         self.current_file_item = file_item
 
-        self.thumbnail_label.setPixmap(get_generic_thumbnail(file_item.get('mimeType'), size=(96, 96)))
+        self.thumbnail_label.setPixmap(get_generic_thumbnail(
+            file_item.get('mimeType'), size=(96, 96)))
 
         if file_item.get('source') == 'drive' and file_item.get('mimeType') not in ['application/vnd.google-apps.folder', 'folder']:
             self.download_button.setVisible(True)
@@ -878,24 +922,18 @@ class FileDetailsPanel(QFrame):
                     Qt.AspectRatioMode.KeepAspectRatio,
                     Qt.TransformationMode.SmoothTransformation
                 ))
-                return 
+                return
 
         if file_item.get('source') == 'drive' and thumbnail_link:
             self.thumbnail_thread = QThread()
-            self.thumbnail_worker = ThumbnailWorker(thumbnail_link, file_item.get('id'))
+            self.thumbnail_worker = ThumbnailWorker(
+                thumbnail_link, file_item.get('id'))
             self.thumbnail_worker.moveToThread(self.thumbnail_thread)
             self.thumbnail_thread.started.connect(self.thumbnail_worker.run)
             self.thumbnail_worker.finished.connect(self.on_thumbnail_loaded)
             self.thumbnail_thread.start()
 
     def on_thumbnail_loaded(self, image_data, thumbnail_path):
-        if self.thumbnail_worker and self.thumbnail_thread:
-            self.thumbnail_thread.quit()
-            self.thumbnail_thread.wait()
-            self.thumbnail_worker.deleteLater()
-            self.thumbnail_thread.deleteLater()
-            self.thumbnail_worker = None
-            self.thumbnail_thread = None
 
         if image_data and thumbnail_path:
             pixmap = QPixmap()
@@ -907,33 +945,52 @@ class FileDetailsPanel(QFrame):
                 ))
                 conn = sqlite3.connect('file_index.db')
                 cursor = conn.cursor()
-                cursor.execute("UPDATE files SET thumbnailPath = ? WHERE file_id = ?", (thumbnail_path, self.current_file_item.get('id')))
+                cursor.execute("UPDATE files SET thumbnailPath = ? WHERE file_id = ?",
+                               (thumbnail_path, self.current_file_item.get('id')))
                 conn.commit()
                 conn.close()
             else:
-                self.thumbnail_label.setPixmap(get_generic_thumbnail(self.current_file_item.get('mimeType'), size=(96, 96)))
+                self.thumbnail_label.setPixmap(get_generic_thumbnail(
+                    self.current_file_item.get('mimeType'), size=(96, 96)))
         else:
-            self.thumbnail_label.setPixmap(get_generic_thumbnail(self.current_file_item.get('mimeType'), size=(96, 96)))
+            self.thumbnail_label.setPixmap(get_generic_thumbnail(
+                self.current_file_item.get('mimeType'), size=(96, 96)))
+
+        if self.thumbnail_worker and self.thumbnail_thread:
+            self.thumbnail_thread.quit()
+            self.thumbnail_thread.wait()
+            self.thumbnail_worker.deleteLater()
+            self.thumbnail_thread.deleteLater()
+            self.thumbnail_worker = None
+            self.thumbnail_thread = None
 
     def download_file(self):
         if self.current_file_item and self.parent_app and hasattr(self.parent_app, 'service'):
             from PyQt6.QtWidgets import QMessageBox
             if self.parent_app.service is None:
-                QMessageBox.warning(self, "Aviso", "Você precisa estar autenticado no Google Drive para baixar arquivos.")
+                QMessageBox.warning(
+                    self, "Aviso", "Você precisa estar autenticado no Google Drive para baixar arquivos.")
                 return
 
-            self.download_dialog = DownloadProgressDialog(self.current_file_item.get('name'), self)
+            self.download_dialog = DownloadProgressDialog(
+                self.current_file_item.get('name'), self)
             self.download_dialog.show()
 
             self.download_thread = QThread(self)
-            self.download_worker = DownloadWorker(self.parent_app.service, self.current_file_item)
+            self.download_worker = DownloadWorker(
+                self.parent_app.service, self.current_file_item)
             self.download_worker.moveToThread(self.download_thread)
 
-            self.download_worker.download_progress.connect(self.download_dialog.update_progress)
-            self.download_worker.download_finished.connect(lambda path, name: self.download_dialog.accept())
-            self.download_worker.download_finished.connect(lambda path, name: QMessageBox.information(self, "Download concluído", f"O arquivo '{name}' foi baixado com sucesso."))
-            self.download_worker.download_failed.connect(lambda msg: self.download_dialog.reject())
-            self.download_worker.download_failed.connect(lambda msg: QMessageBox.critical(self, "Erro no Download", msg))
+            self.download_worker.download_progress.connect(
+                self.download_dialog.update_progress)
+            self.download_worker.download_finished.connect(
+                lambda path, name: self.download_dialog.accept())
+            self.download_worker.download_finished.connect(lambda path, name: QMessageBox.information(
+                self, "Download concluído", f"O arquivo '{name}' foi baixado com sucesso."))
+            self.download_worker.download_failed.connect(
+                lambda msg: self.download_dialog.reject())
+            self.download_worker.download_failed.connect(
+                lambda msg: QMessageBox.critical(self, "Erro no Download", msg))
 
             def after_download(path, name):
                 for i in range(self.parent_app.files_layout.count()):
@@ -954,18 +1011,21 @@ class FileDetailsPanel(QFrame):
                 self.download_thread = None
                 self.download_worker = None
 
-            self.download_worker.download_finished.connect(lambda *_: QTimer.singleShot(0, cleanup))
-            self.download_worker.download_failed.connect(lambda *_: QTimer.singleShot(0, cleanup))
+            self.download_worker.download_finished.connect(
+                lambda *_: QTimer.singleShot(0, cleanup))
+            self.download_worker.download_failed.connect(
+                lambda *_: QTimer.singleShot(0, cleanup))
 
             self.download_thread.started.connect(self.download_worker.run)
             self.download_thread.start()
+
 
 class ClickableLabel(QLabel):
     clicked = pyqtSignal()
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.setCursor(Qt.CursorShape.PointingHandCursor) 
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
 
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:

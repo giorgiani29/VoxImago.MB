@@ -4,10 +4,12 @@
 
 import os
 import json
+import hashlib
 from PyQt6.QtGui import QPixmap, QPainter, QBrush, QColor
 from PyQt6.QtCore import Qt
 
 SETTINGS_FILE = 'settings.json'
+
 
 def load_settings():
     if os.path.exists(SETTINGS_FILE):
@@ -15,9 +17,11 @@ def load_settings():
             return json.load(f)
     return {}
 
+
 def save_settings(settings):
     with open(SETTINGS_FILE, 'w') as f:
         json.dump(settings, f, indent=4)
+
 
 def get_generic_thumbnail(mime_type, size=(48, 48)):
     icon_dir = os.path.join(os.path.dirname(__file__), "icons")
@@ -54,6 +58,7 @@ def get_generic_thumbnail(mime_type, size=(48, 48)):
         painter.end()
         return pixmap
 
+
 def format_size(size_in_bytes):
     if size_in_bytes < 1024:
         return f"{size_in_bytes} B"
@@ -63,8 +68,8 @@ def format_size(size_in_bytes):
         return f"{size_in_bytes / 1024**2:.2f} MB"
     else:
         return f"{size_in_bytes / 1024**3:.2f} GB"
-    
-    
+
+
 def load_settings():
 
     if os.path.exists(SETTINGS_FILE):
@@ -72,10 +77,12 @@ def load_settings():
             return json.load(f)
     return {}
 
+
 def save_settings(settings):
 
     with open(SETTINGS_FILE, 'w') as f:
         json.dump(settings, f, indent=4)
+
 
 def get_generic_thumbnail(mime_type, size=(48, 48)):
     """
@@ -116,6 +123,7 @@ def get_generic_thumbnail(mime_type, size=(48, 48)):
         painter.end()
         return pixmap
 
+
 def format_size(size_in_bytes):
 
     if size_in_bytes < 1024:
@@ -126,3 +134,16 @@ def format_size(size_in_bytes):
         return f"{size_in_bytes / 1024**2:.2f} MB"
     else:
         return f"{size_in_bytes / 1024**3:.2f} GB"
+
+
+def get_thumbnail_cache_key(file_item):
+    if file_item.get('source') == 'local':
+        path = file_item.get('path', '')
+        mtime = str(file_item.get('modifiedTime', ''))
+        size = str(file_item.get('size', ''))
+        key = hashlib.sha1(f"{path}|{mtime}|{size}".encode()).hexdigest()
+    else:
+        file_id = file_item.get('id', '')
+        modified_time = str(file_item.get('modifiedTime', ''))
+        key = hashlib.sha1(f"{file_id}|{modified_time}".encode()).hexdigest()
+    return key

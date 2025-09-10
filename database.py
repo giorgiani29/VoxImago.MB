@@ -10,13 +10,14 @@ import shutil
 
 THUMBNAIL_CACHE_DIR = "thumbnail_cache"
 
+
 class FileIndexer:
     def __init__(self, db_name='file_index.db'):
         self.db_name = db_name
         self.conn = sqlite3.connect(self.db_name)
         self.cursor = self.conn.cursor()
-        self._create_tables() 
-    
+        self._create_tables()
+
     def _create_tables(self):
         self.cursor.execute('''
             CREATE TABLE IF NOT EXISTS files (
@@ -36,7 +37,7 @@ class FileIndexer:
                 starred INTEGER DEFAULT 0
             )
     ''')
-        
+
         self.cursor.execute('''
             CREATE VIRTUAL TABLE IF NOT EXISTS search_index USING fts5(
                 name,
@@ -45,26 +46,41 @@ class FileIndexer:
                 source UNINDEXED
             )
     ''')
+        self.cursor.execute(
+            'CREATE INDEX IF NOT EXISTS idx_files_source ON files(source)')
+        self.cursor.execute(
+            'CREATE INDEX IF NOT EXISTS idx_files_parentId ON files(parentId)')
+        self.cursor.execute(
+            'CREATE INDEX IF NOT EXISTS idx_files_mimeType ON files(mimeType)')
+        self.cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_files_starred ON files(starred)")
+        self.cursor.execute(
+            'CREATE INDEX IF NOT EXISTS idx_files_name ON files(name COLLATE NOCASE)')
+
+        self.cursor.execute("PRAGMA journal_mode=WAL")
+        self.cursor.execute("PRAGMA synchronous=NORMAL")
+        self.cursor.execute("PRAGMA temp_store=MEMORY")
+        self.cursor.execute("PRAGMA cache_size=5000")
         self.conn.commit()
 
     def get_search_suggestions(self, search_term, search_all_sources, limit=10):
         self.cursor.execute("PRAGMA synchronous=OFF")
-        
+
         quoted_term = search_term.strip().replace('"', '""')
         query_term = f'"{quoted_term}*"'
-        
+
         if search_all_sources:
             query = "SELECT name FROM search_index WHERE search_index MATCH ? ORDER BY rank LIMIT ?"
             self.cursor.execute(query, (query_term, limit))
         else:
             query = "SELECT name FROM search_index WHERE search_index MATCH ? AND source = 'local' ORDER BY rank LIMIT ?"
             self.cursor.execute(query, (query_term, limit))
-        
+
         suggestions = [row[0] for row in self.cursor.fetchall()]
-        
+
         self.cursor.execute("PRAGMA synchronous=FULL")
         return list(dict.fromkeys(suggestions))
-        
+
     def save_files_in_batch(self, files_list, source):
         data_files = [
             (
@@ -84,7 +100,8 @@ class FileIndexer:
                 0
             ) for item in files_list
         ]
-        self.cursor.executemany("INSERT OR REPLACE INTO files VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", data_files)
+        self.cursor.executemany(
+            "INSERT OR REPLACE INTO files VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", data_files)
 
         data_search_index = [
             (
@@ -94,7 +111,8 @@ class FileIndexer:
                 item.get('source')
             ) for item in files_list
         ]
-        self.cursor.executemany("INSERT OR REPLACE INTO search_index VALUES (?, ?, ?, ?)", data_search_index)
+        self.cursor.executemany(
+            "INSERT OR REPLACE INTO search_index VALUES (?, ?, ?, ?)", data_search_index)
 
         self.conn.commit()
 
@@ -102,24 +120,25 @@ class FileIndexer:
         if os.path.exists(THUMBNAIL_CACHE_DIR):
             shutil.rmtree(THUMBNAIL_CACHE_DIR)
         os.makedirs(THUMBNAIL_CACHE_DIR, exist_ok=True)
-        self.cursor.execute("UPDATE files SET thumbnailPath = NULL WHERE source = 'drive'")
+        self.cursor.execute(
+            "UPDATE files SET thumbnailPath = NULL WHERE source = 'drive'")
         self.conn.commit()
 
     def count_files(self, source, search_term=None, filter_type=None, folder_id=None, advanced_filters=None):
         query_base = "SELECT COUNT(*) FROM files"
         params = []
         where_clauses = []
-        
+
         if source:
             where_clauses.append("source=?")
             params.append(source)
-        
+
         if folder_id:
             where_clauses.append("parentId=?")
             params.append(folder_id)
         elif not search_term:
             where_clauses.append("(parentId IS NULL OR parentId = '')")
-        
+
         if search_term:
             query_base = "SELECT COUNT(*) FROM search_index"
             quoted_search_term = search_term.strip().replace('"', '""')
@@ -131,14 +150,18 @@ class FileIndexer:
         if filter_type == 'image':
             where_clauses.append("mimeType LIKE 'image/%'")
         elif filter_type == 'document':
-            where_clauses.append("(mimeType LIKE 'application/vnd.google-apps.document' OR mimeType LIKE 'application/pdf' OR mimeType LIKE '%wordprocessingml.document%')")
+            where_clauses.append(
+                "(mimeType LIKE 'application/vnd.google-apps.document' OR mimeType LIKE 'application/pdf' OR mimeType LIKE '%wordprocessingml.document%')")
         elif filter_type == 'spreadsheet':
-            where_clauses.append("(mimeType LIKE 'application/vnd.google-apps.spreadsheet' OR mimeType LIKE '%spreadsheetml.sheet%')")
+            where_clauses.append(
+                "(mimeType LIKE 'application/vnd.google-apps.spreadsheet' OR mimeType LIKE '%spreadsheetml.sheet%')")
         elif filter_type == 'presentation':
-            where_clauses.append("(mimeType LIKE 'application/vnd.google-apps.presentation' OR mimeType LIKE '%presentationml.presentation%')")
+            where_clauses.append(
+                "(mimeType LIKE 'application/vnd.google-apps.presentation' OR mimeType LIKE '%presentationml.presentation%')")
         elif filter_type == 'folder':
-            where_clauses.append("mimeType = 'folder' OR mimeType = 'application/vnd.google-apps.folder'")
-        
+            where_clauses.append(
+                "mimeType = 'folder' OR mimeType = 'application/vnd.google-apps.folder'")
+
         if advanced_filters:
             if 'size_min' in advanced_filters and advanced_filters['size_min']:
                 where_clauses.append("size >= ?")
@@ -148,19 +171,22 @@ class FileIndexer:
                 params.append(advanced_filters['size_max'] * 1024 * 1024)
             if 'modified_after' in advanced_filters and advanced_filters['modified_after']:
                 where_clauses.append("modifiedTime >= ?")
-                params.append(int(time.mktime(advanced_filters['modified_after'].timetuple())))
+                params.append(
+                    int(time.mktime(advanced_filters['modified_after'].timetuple())))
             if 'created_after' in advanced_filters and advanced_filters['created_after']:
                 where_clauses.append("createdTime >= ?")
-                params.append(int(time.mktime(advanced_filters['created_after'].timetuple())))
+                params.append(
+                    int(time.mktime(advanced_filters['created_after'].timetuple())))
             if 'created_before' in advanced_filters and advanced_filters['created_before']:
                 where_clauses.append("createdTime <= ?")
-                params.append(int(time.mktime(advanced_filters['created_before'].timetuple())))
+                params.append(
+                    int(time.mktime(advanced_filters['created_before'].timetuple())))
             if 'extension' in advanced_filters and advanced_filters['extension']:
                 where_clauses.append("name LIKE ?")
                 params.append(f"%{advanced_filters['extension']}")
 
         query = query_base + " WHERE " + " AND ".join(where_clauses)
-        
+
         self.cursor.execute(query, params)
         return self.cursor.fetchone()[0]
 
@@ -185,18 +211,23 @@ class FileIndexer:
                 files_where_clauses.append("parentId=?")
                 files_params.append(folder_id)
             elif not search_term and not (advanced_filters and advanced_filters.get('extension')):
-                files_where_clauses.append("(parentId IS NULL OR parentId = '')")
+                files_where_clauses.append(
+                    "(parentId IS NULL OR parentId = '')")
 
             if filter_type == 'image':
                 files_where_clauses.append("mimeType LIKE 'image/%'")
             elif filter_type == 'document':
-                files_where_clauses.append("(mimeType LIKE 'application/vnd.google-apps.document' OR mimeType LIKE 'application/pdf' OR mimeType LIKE '%wordprocessingml.document%')")
+                files_where_clauses.append(
+                    "(mimeType LIKE 'application/vnd.google-apps.document' OR mimeType LIKE 'application/pdf' OR mimeType LIKE '%wordprocessingml.document%')")
             elif filter_type == 'spreadsheet':
-                files_where_clauses.append("(mimeType LIKE 'application/vnd.google-apps.spreadsheet' OR mimeType LIKE '%spreadsheetml.sheet%')")
+                files_where_clauses.append(
+                    "(mimeType LIKE 'application/vnd.google-apps.spreadsheet' OR mimeType LIKE '%spreadsheetml.sheet%')")
             elif filter_type == 'presentation':
-                files_where_clauses.append("(mimeType LIKE 'application/vnd.google-apps.presentation' OR mimeType LIKE '%presentationml.presentation%')")
+                files_where_clauses.append(
+                    "(mimeType LIKE 'application/vnd.google-apps.presentation' OR mimeType LIKE '%presentationml.presentation%')")
             elif filter_type == 'folder':
-                files_where_clauses.append("mimeType = 'folder' OR mimeType = 'application/vnd.google-apps.folder'")
+                files_where_clauses.append(
+                    "mimeType = 'folder' OR mimeType = 'application/vnd.google-apps.folder'")
 
         if advanced_filters:
             if 'size_min' in advanced_filters and advanced_filters['size_min']:
@@ -207,32 +238,39 @@ class FileIndexer:
                 files_params.append(advanced_filters['size_max'] * 1024 * 1024)
             if 'modified_after' in advanced_filters and advanced_filters['modified_after']:
                 files_where_clauses.append("modifiedTime >= ?")
-                files_params.append(int(time.mktime(advanced_filters['modified_after'].timetuple())))
+                files_params.append(
+                    int(time.mktime(advanced_filters['modified_after'].timetuple())))
             if 'created_after' in advanced_filters and advanced_filters['created_after']:
                 files_where_clauses.append("createdTime >= ?")
-                files_params.append(int(time.mktime(advanced_filters['created_after'].timetuple())))
+                files_params.append(
+                    int(time.mktime(advanced_filters['created_after'].timetuple())))
             if 'created_before' in advanced_filters and advanced_filters['created_before']:
                 files_where_clauses.append("createdTime <= ?")
-                files_params.append(int(time.mktime(advanced_filters['created_before'].timetuple())))
+                files_params.append(
+                    int(time.mktime(advanced_filters['created_before'].timetuple())))
             if 'extension' in advanced_filters and advanced_filters['extension']:
                 files_where_clauses.append("name LIKE ?")
                 files_params.append(f"%{advanced_filters['extension']}")
                 files_where_clauses.append("mimeType != 'folder'")
-                files_where_clauses.append("mimeType != 'application/vnd.google-apps.folder'")
+                files_where_clauses.append(
+                    "mimeType != 'application/vnd.google-apps.folder'")
             if 'is_starred' in advanced_filters and advanced_filters['is_starred']:
                 files_where_clauses.append("starred = 1")
-                
+
         if search_term:
             quoted_phrases = re.findall(r'"([^"]+)"', search_term)
             search_term_no_quotes = re.sub(r'"[^"]+"', '', search_term)
-            or_groups = [grp.strip() for grp in re.split(r'\s+OR\s+', search_term_no_quotes, flags=re.IGNORECASE) if grp.strip()]
+            or_groups = [grp.strip() for grp in re.split(
+                r'\s+OR\s+', search_term_no_quotes, flags=re.IGNORECASE) if grp.strip()]
             file_ids_to_fetch = set()
             ranks = []
 
             for group in or_groups:
-                terms = [t.strip() for t in re.split(r'\s+', group) if t.strip()]
+                terms = [t.strip()
+                         for t in re.split(r'\s+', group) if t.strip()]
                 positive_terms = [t for t in terms if not t.startswith('-')]
-                negative_terms = [t[1:] for t in terms if t.startswith('-') and len(t) > 1]
+                negative_terms = [t[1:]
+                                  for t in terms if t.startswith('-') and len(t) > 1]
                 quoted_phrases_group = re.findall(r'"([^"]+)"', group)
 
                 fts_clauses = []
@@ -243,14 +281,17 @@ class FileIndexer:
                     fts_params.append(f'"{phrase}"')
 
                 if positive_terms:
-                    pos_terms = [f'"{t.replace("\"", "\"\"")}"*' for t in positive_terms]
+                    pos_terms = [
+                        f'"{t.replace("\"", "\"\"")}"*' for t in positive_terms]
                     pos_query = ' '.join(pos_terms)
                     fts_clauses.append("search_index MATCH ?")
                     fts_params.append(pos_query)
                 elif not quoted_phrases_group:
                     fts_clauses.append("1=1")
 
-                fts_query = "SELECT file_id FROM search_index WHERE " + ' AND '.join(fts_clauses) + " ORDER BY rank LIMIT ? OFFSET ?"
+                fts_query = "SELECT file_id FROM search_index WHERE " + \
+                    ' AND '.join(fts_clauses) + \
+                    " ORDER BY rank LIMIT ? OFFSET ?"
                 fts_params.extend([page_size, offset])
                 self.cursor.execute(fts_query, fts_params)
                 group_ids = [row[0] for row in self.cursor.fetchall()]
@@ -259,11 +300,13 @@ class FileIndexer:
             file_ids_to_fetch = list(file_ids_to_fetch)
             if not file_ids_to_fetch:
                 return []
-            
+
             all_negative_terms = []
             for group in or_groups:
-                terms = [t.strip() for t in re.split(r'\s+', group) if t.strip()]
-                all_negative_terms.extend([t[1:] for t in terms if t.startswith('-') and len(t) > 1])
+                terms = [t.strip()
+                         for t in re.split(r'\s+', group) if t.strip()]
+                all_negative_terms.extend(
+                    [t[1:] for t in terms if t.startswith('-') and len(t) > 1])
 
             placeholders = ','.join('?' for _ in file_ids_to_fetch)
             details_query = f"SELECT file_id, name, path, mimeType, source, description, thumbnailLink, thumbnailPath, size, modifiedTime, parentId FROM files WHERE file_id IN ({placeholders}) ORDER BY {order_by_clause}"
@@ -282,7 +325,8 @@ class FileIndexer:
                 if not exclude:
                     filtered_rows.append(row)
 
-            self.cursor.execute(f"SELECT rank FROM search_index WHERE file_id IN ({placeholders})", file_ids_to_fetch)
+            self.cursor.execute(
+                f"SELECT rank FROM search_index WHERE file_id IN ({placeholders})", file_ids_to_fetch)
             ranks = [row[0] for row in self.cursor.fetchall()]
             return self._build_file_objects(filtered_rows, ranks)
 
@@ -312,20 +356,23 @@ class FileIndexer:
     def get_breadcrumb(self, folder_id, source):
         if not folder_id:
             return [{'id': None, 'name': 'Root' if source == 'local' else 'Drive'}]
-        
+
         breadcrumb = []
         current_id = folder_id
         while current_id:
-            self.cursor.execute("SELECT file_id, name, path, parentId FROM files WHERE file_id = ?", (current_id,))
+            self.cursor.execute(
+                "SELECT file_id, name, path, parentId FROM files WHERE file_id = ?", (current_id,))
             row = self.cursor.fetchone()
             if row:
-                breadcrumb.append({'id': row[0], 'name': row[1], 'path': row[2]})
+                breadcrumb.append(
+                    {'id': row[0], 'name': row[1], 'path': row[2]})
                 current_id = row[3]
             else:
                 break
-        breadcrumb.append({'id': None, 'name': 'Root' if source == 'local' else 'Drive'})
+        breadcrumb.append(
+            {'id': None, 'name': 'Root' if source == 'local' else 'Drive'})
         return list(reversed(breadcrumb))
-    
+
     def _build_file_objects(self, rows, ranks):
         files = []
         for i, row in enumerate(rows):
@@ -345,15 +392,26 @@ class FileIndexer:
             }
             files.append(file)
         return files
-    
+
     def set_starred(self, file_id, starred=True):
-        self.cursor.execute("UPDATE files SET starred = ? WHERE file_id = ?", (1 if starred else 0, file_id))
+        self.cursor.execute(
+            "UPDATE files SET starred = ? WHERE file_id = ?", (1 if starred else 0, file_id))
         self.conn.commit()
 
     def is_starred(self, file_id):
-        self.cursor.execute("SELECT starred FROM files WHERE file_id = ?", (file_id,))
+        self.cursor.execute(
+            "SELECT starred FROM files WHERE file_id = ?", (file_id,))
         row = self.cursor.fetchone()
         return bool(row and row[0])
 
     def close(self):
         self.conn.close()
+
+def open_db_for_thread(db_name):
+    import sqlite3
+    conn = sqlite3.connect(db_name, check_same_thread=False)
+    conn.execute("PRAGMA journal_mode = WAL;")
+    conn.execute("PRAGMA synchronous = NORMAL;")
+    conn.execute("PRAGMA temp_store = MEMORY;")
+    conn.execute("PRAGMA cache_size = 5000;")
+    return conn
