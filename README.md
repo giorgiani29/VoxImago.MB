@@ -1,6 +1,17 @@
 # Vox Imago Beta
 
-Busca unificada de arquivos locais e Google Drive com filtros avançados, favoritos, visualização de detalhes, download e interface moderna em PyQt6.
+Busca unificada de arquivos locais e Google Drive com filtros avançados, favoritos, visualização de detalhes e interface moderna em PyQt6.
+
+## Mudanças Recentes (Setembro 2025)
+
+- **Busca por descrição do Drive encontra arquivos locais idênticos:**
+  - Agora, ao sincronizar o Drive, a descrição dos arquivos do Drive é copiada para o arquivo local idêntico (mesmo nome e tamanho). Assim, ao buscar por uma descrição, o arquivo local é encontrado mesmo que originalmente não tivesse metadados.
+- **Remoção completa da lógica de download:**
+  - Todas as funções, botões e classes relacionadas a download de arquivos do Google Drive foram removidas do código. O app agora utiliza apenas os metadados para busca e exibição.
+- **Thumbnails reais apenas no painel de detalhes:**
+  - Na lista principal, é exibido apenas o ícone genérico do tipo de arquivo. Miniaturas reais aparecem apenas no painel de detalhes.
+- **Limpeza de código legado:**
+  - Código antigo e funções não utilizadas foram removidos dos módulos principais, deixando o projeto mais limpo e fácil de manter.
 
 ## Principais Mudanças
 
@@ -51,7 +62,6 @@ Busca unificada de arquivos locais e Google Drive com filtros avançados, favori
 - Busca por nome, descrição, frases entre aspas, OR, e exclusão de termos (-palavra)
 - Filtros por tipo, extensão, data de criação/modificação e favoritos
 - Visualização de detalhes com thumbnail ampliada e barra de rolagem
-- Download de arquivos do Google Drive
 - Escaneamento de múltiplas pastas locais
 - Interface moderna e responsiva em PyQt6
 

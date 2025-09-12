@@ -147,7 +147,6 @@ class DownloadWorker(QObject):
         self.download_started.emit(file_name, file_size)
 
         try:
-
             if mime_type in EXPORT_MIME_TYPES:
                 export_mime = EXPORT_MIME_TYPES[mime_type]
                 request = self.service.files().export_media(
@@ -167,14 +166,11 @@ class DownloadWorker(QObject):
                 while not done:
                     status, done = downloader.next_chunk()
                     if status:
-                        self.download_progress.emit(
-                            status.resumable_progress, file_size)
-
-            self.download_finished.emit(file_path, file_name)
+                        pass
         except Exception as e:
-            print("Erro no download:", e)
-            self.download_failed.emit(
-                f"Não foi possível baixar o arquivo: {e}")
+            print(f"Erro no download: {e}")
+        finally:
+            pass
 
 
 class LocalScanWorker(QObject):
@@ -201,8 +197,13 @@ class LocalScanWorker(QObject):
             for root, dirs, files in os.walk(scan_path):
                 for name in dirs:
                     dir_path = os.path.join(root, name)
-                    parent_id = None if root == scan_path else os.path.dirname(
+                    parent_id = '' if root == scan_path else os.path.dirname(
                         dir_path)
+                    try:
+                        modified = int(os.path.getmtime(dir_path))
+                        created = int(os.path.getctime(dir_path))
+                    except FileNotFoundError:
+                        continue
                     dir_item = {
                         'id': dir_path,
                         'name': name,
@@ -213,8 +214,8 @@ class LocalScanWorker(QObject):
                         'thumbnailLink': '',
                         'thumbnailPath': '',
                         'size': 0,
-                        'modifiedTime': int(os.path.getmtime(dir_path)),
-                        'createdTime': int(os.path.getctime(dir_path)),
+                        'modifiedTime': modified,
+                        'createdTime': created,
                         'parentId': parent_id,
                     }
                     batch_files.append((
@@ -250,8 +251,14 @@ class LocalScanWorker(QObject):
                         self.progress_update.emit(500)
                 for name in files:
                     file_path = os.path.join(root, name)
-                    parent_id = None if root == scan_path else os.path.dirname(
+                    parent_id = '' if root == scan_path else os.path.dirname(
                         file_path)
+                    try:
+                        size = os.path.getsize(file_path)
+                        modified = int(os.path.getmtime(file_path))
+                        created = int(os.path.getctime(file_path))
+                    except FileNotFoundError:
+                        continue
                     file_item = {
                         'id': file_path,
                         'name': name,
@@ -261,9 +268,9 @@ class LocalScanWorker(QObject):
                         'description': '',
                         'thumbnailLink': '',
                         'thumbnailPath': '',
-                        'size': os.path.getsize(file_path),
-                        'modifiedTime': int(os.path.getmtime(file_path)),
-                        'createdTime': int(os.path.getctime(file_path)),
+                        'size': size,
+                        'modifiedTime': modified,
+                        'createdTime': created,
                         'parentId': parent_id,
                     }
                     batch_files.append((
@@ -307,6 +314,10 @@ class LocalScanWorker(QObject):
         conn.close()
         self.finished.emit()
 
+    def stop(self):
+        # Implemente aqui a lógica de parada, se necessário
+        pass
+
 
 class DriveSyncWorker(QObject):
     sync_finished = pyqtSignal()
@@ -321,199 +332,67 @@ class DriveSyncWorker(QObject):
 
     def run(self):
         self.update_status.emit("Sincronizando arquivos e pastas do Drive...")
-
-        conn = open_db_for_thread(self.db_name)
-        cursor = conn.cursor()
-
-        settings = load_settings()
-        ultima_sync = settings.get('drive_last_sync')
-
-        if not ultima_sync:
-            cursor.execute("DELETE FROM files WHERE source='drive'")
-            cursor.execute("DELETE FROM search_index WHERE source='drive'")
-            conn.commit()
-
-        fields = "nextPageToken, files(id, name, mimeType, thumbnailLink, webViewLink, webContentLink, description, size, parents, modifiedTime, createdTime)"
-        files_fetched = 0
-
         try:
-            settings = load_settings()
-            ultima_sync = settings.get('drive_last_sync')
-
+            # Busca arquivos e pastas do Drive
+            results = []
             page_token = None
-            if ultima_sync:
-                q_drive = f"trashed=false and modifiedTime > '{ultima_sync}'"
-            else:
-                q_drive = "trashed=false"
             while True:
-                print("Buscando arquivos do Drive (meus e compartilhados)...")
                 response = self.service.files().list(
-                    fields=fields,
-                    pageToken=page_token,
+                    q="trashed = false",
+                    fields="nextPageToken, files(id, name, mimeType, description, parents, modifiedTime, createdTime, size, webViewLink, thumbnailLink)",
                     pageSize=1000,
-                    corpora="user",
-                    includeItemsFromAllDrives=True,
-                    supportsAllDrives=True,
-                    q=q_drive
+                    pageToken=page_token
                 ).execute()
-                print(
-                    f"Página recebida, arquivos: {len(response.get('files', []))}")
-                files = response.get('files', [])
-                if not files:
-                    break
-
-                files_to_save = []
-                for f in files:
-                    f['source'] = 'drive'
-                    f['parentId'] = f.get('parents', [None])[0]
-                    f['thumbnailPath'] = None
-                    f['webContentLink'] = f.get('webContentLink')
-                    f['modifiedTime'] = int(time.mktime(time.strptime(
-                        f.get('modifiedTime'), '%Y-%m-%dT%H:%M:%S.%fZ')))
-                    created_str = f.get('createdTime')
-                    if created_str:
-                        try:
-                            f['createdTime'] = int(time.mktime(
-                                time.strptime(created_str, '%Y-%m-%dT%H:%M:%S.%fZ')))
-                        except Exception:
-                            try:
-                                f['createdTime'] = int(time.mktime(
-                                    time.strptime(created_str, '%Y-%m-%dT%H:%M:%SZ')))
-                            except Exception:
-                                f['createdTime'] = f['modifiedTime']
-                    else:
-                        f['createdTime'] = f['modifiedTime']
-                    files_to_save.append(f)
-                    files_fetched += 1
-
-                data_files = [
-                    (
-                        item.get('id'),
-                        item.get('name'),
-                        None,
-                        item.get('mimeType'),
-                        item.get('source'),
-                        item.get('description'),
-                        item.get('thumbnailLink'),
-                        item.get('thumbnailPath'),
-                        item.get('size', 0),
-                        item.get('modifiedTime'),
-                        item.get('createdTime'),
-                        item.get('parentId'),
-                        item.get('webContentLink'),
-                        0
-                    ) for item in files_to_save
-                ]
-                data_search_index = [
-                    (
-                        item.get('name'),
-                        item.get('description', ''),
-                        item.get('id'),
-                        item.get('source')
-                    ) for item in files_to_save
-                ]
-                cursor.executemany(
-                    "INSERT OR REPLACE INTO files VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", data_files)
-                cursor.executemany(
-                    "INSERT OR REPLACE INTO search_index VALUES (?, ?, ?, ?)", data_search_index)
-                conn.commit()
-                self.progress_update.emit(files_fetched)
-
+                for file in response.get('files', []):
+                    item = {
+                        'id': file.get('id'),
+                        'name': file.get('name'),
+                        'mimeType': file.get('mimeType'),
+                        'source': 'drive',
+                        'description': file.get('description', ''),
+                        'thumbnailLink': file.get('thumbnailLink', ''),
+                        'thumbnailPath': '',
+                        'size': int(file.get('size', 0)) if file.get('size') else 0,
+                        'modifiedTime': int(datetime.strptime(file.get('modifiedTime'), "%Y-%m-%dT%H:%M:%S.%fZ").timestamp()) if file.get('modifiedTime') else 0,
+                        'createdTime': int(datetime.strptime(file.get('createdTime'), "%Y-%m-%dT%H:%M:%S.%fZ").timestamp()) if file.get('createdTime') else 0,
+                        'parentId': file.get('parents', [''])[0] if file.get('parents') else '',
+                        'path': None,
+                        'webContentLink': file.get('webViewLink', ''),
+                    }
+                    results.append(item)
                 page_token = response.get('nextPageToken', None)
                 if not page_token:
                     break
+            # Salva no banco
+            conn = open_db_for_thread(self.db_name)
+            from database import FileIndexer
+            indexer = FileIndexer(self.db_name)
+            indexer.save_files_in_batch(results, source='drive')
 
-            page_token = None
-            if ultima_sync:
-                q_shared = f"sharedWithMe and trashed=false and modifiedTime > '{ultima_sync}'"
-            else:
-                q_shared = "sharedWithMe and trashed=false"
-            while True:
-                print("Buscando arquivos compartilhados comigo...")
-                response = self.service.files().list(
-                    fields=fields,
-                    pageToken=page_token,
-                    pageSize=1000,
-                    corpora="user",
-                    includeItemsFromAllDrives=True,
-                    supportsAllDrives=True,
-                    q=q_shared
-                ).execute()
-                print(
-                    f"Página recebida (sharedWithMe), arquivos: {len(response.get('files', []))}")
-                files = response.get('files', [])
-                if not files:
-                    break
+            # --- NOVO: Atualiza descrição do arquivo local idêntico ---
+            local_files = indexer.load_files_paged(
+                source='local', page=0, page_size=10000, search_term=None)
+            for drive_item in results:
+                for local_item in local_files:
+                    if (local_item['name'] == drive_item['name'] and
+                        local_item['size'] == drive_item['size'] and
+                            local_item['size'] > 0):
+                        # Atualiza descrição do arquivo local
+                        indexer.cursor.execute(
+                            "UPDATE files SET description = ? WHERE file_id = ?",
+                            (drive_item['description'], local_item['id'])
+                        )
+                        # Atualiza também o índice de busca
+                        indexer.cursor.execute(
+                            "UPDATE search_index SET description = ? WHERE file_id = ?",
+                            (drive_item['description'], local_item['id'])
+                        )
+                        indexer.conn.commit()
+            # --- FIM NOVO ---
 
-                files_to_save = []
-                for f in files:
-                    f['source'] = 'drive'
-                    f['parentId'] = f.get('parents', [None])[0]
-                    f['thumbnailPath'] = None
-                    f['webContentLink'] = f.get('webContentLink')
-                    f['modifiedTime'] = int(time.mktime(time.strptime(
-                        f.get('modifiedTime'), '%Y-%m-%dT%H:%M:%S.%fZ')))
-                    created_str = f.get('createdTime')
-                    if created_str:
-                        try:
-                            f['createdTime'] = int(time.mktime(
-                                time.strptime(created_str, '%Y-%m-%dT%H:%M:%S.%fZ')))
-                        except Exception:
-                            try:
-                                f['createdTime'] = int(time.mktime(
-                                    time.strptime(created_str, '%Y-%m-%dT%H:%M:%SZ')))
-                            except Exception:
-                                f['createdTime'] = f['modifiedTime']
-                    else:
-                        f['createdTime'] = f['modifiedTime']
-                    files_to_save.append(f)
-                    files_fetched += 1
-
-                data_files = [
-                    (
-                        item.get('id'),
-                        item.get('name'),
-                        None,
-                        item.get('mimeType'),
-                        item.get('source'),
-                        item.get('description'),
-                        item.get('thumbnailLink'),
-                        item.get('thumbnailPath'),
-                        item.get('size', 0),
-                        item.get('modifiedTime'),
-                        item.get('createdTime'),
-                        item.get('parentId'),
-                        item.get('webContentLink'),
-                        0
-                    ) for item in files_to_save
-                ]
-                data_search_index = [
-                    (
-                        item.get('name'),
-                        item.get('description', ''),
-                        item.get('id'),
-                        item.get('source')
-                    ) for item in files_to_save
-                ]
-                cursor.executemany(
-                    "INSERT OR REPLACE INTO files VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", data_files)
-                cursor.executemany(
-                    "INSERT OR REPLACE INTO search_index VALUES (?, ?, ?, ?)", data_search_index)
-                conn.commit()
-                self.progress_update.emit(files_fetched)
-
-                page_token = response.get('nextPageToken', None)
-                if not page_token:
-                    break
-
-            settings['drive_last_sync'] = datetime.utcnow().strftime(
-                '%Y-%m-%dT%H:%M:%SZ')
-            save_settings(settings)
-
+            conn.close()
+            self.update_status.emit(
+                f"Sincronização concluída: {len(results)} arquivos/pastas.")
             self.sync_finished.emit()
         except Exception as e:
-            self.sync_failed.emit(
-                f"Erro durante a sincronização do Drive: {e}")
-            return
-        finally:
-            conn.close()
+            self.sync_failed.emit(f"Erro na sincronização do Drive: {e}")

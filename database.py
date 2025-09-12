@@ -12,6 +12,25 @@ THUMBNAIL_CACHE_DIR = "thumbnail_cache"
 
 
 class FileIndexer:
+    def buscar_drive_por_metadados(self, termo):
+        query = "SELECT file_id, name, path, description, starred, mimeType FROM files WHERE source = 'drive' AND (name LIKE ? OR description LIKE ?)"
+        like_term = f"%{termo}%"
+        self.cursor.execute(query, (like_term, like_term))
+        resultados = []
+        for row in self.cursor.fetchall():
+            arquivo = {
+                'id': row[0],
+                'name': row[1],
+                'local_path': row[2],
+                'description': row[3],
+                'starred': bool(row[4]),
+                'mimeType': row[5],
+            }
+            arquivo['is_local'] = os.path.exists(
+                arquivo['local_path']) if arquivo['local_path'] else False
+            resultados.append(arquivo)
+        return resultados
+
     def __init__(self, db_name='file_index.db'):
         self.db_name = db_name
         self.conn = sqlite3.connect(self.db_name)
@@ -406,6 +425,7 @@ class FileIndexer:
 
     def close(self):
         self.conn.close()
+
 
 def open_db_for_thread(db_name):
     import sqlite3

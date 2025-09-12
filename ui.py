@@ -9,7 +9,7 @@ import sqlite3
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from google.auth.transport.requests import Request
-from workers import AuthWorker, ThumbnailWorker, DownloadWorker, LocalScanWorker, DriveSyncWorker
+from workers import AuthWorker, ThumbnailWorker, LocalScanWorker, DriveSyncWorker
 
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton,
@@ -21,12 +21,22 @@ from PyQt6.QtGui import QPixmap, QFont
 from PyQt6.QtCore import Qt, QTimer, QStringListModel, QDate, QThread, pyqtSignal, QThreadPool
 
 from database import FileIndexer
-from widgets import OptionsDialog, FileItemWidget, DownloadProgressDialog
+from widgets import OptionsDialog, FileItemWidget
 from utils import format_size, get_generic_thumbnail, load_settings, save_settings
 from utils import SETTINGS_FILE as TOKEN_FILE
 
 
 class DriveFileGalleryApp(QMainWindow):
+    def _reindex_local_files(self):
+        settings = load_settings()
+        scan_paths = settings.get('scan_paths')
+        if scan_paths and len(scan_paths) > 0:
+            self._start_local_scan(scan_paths)
+            self.status_bar.showMessage("Reindexando arquivos locais...", 5000)
+        else:
+            self.status_bar.showMessage(
+                "Nenhuma pasta local configurada para reindexação.", 5000)
+
     def __init__(self):
         super().__init__()
         self.setWindowTitle("VoxImago - Galeria de Arquivos")
@@ -69,13 +79,25 @@ class DriveFileGalleryApp(QMainWindow):
         self.show()
 
         settings = load_settings()
+        self.show_drive_metadata = settings.get('show_drive_metadata', True)
         scan_paths = settings.get('scan_paths')
-        if scan_paths:
+        if scan_paths and len(scan_paths) > 0:
             self._start_local_scan(scan_paths)
         else:
-            default_paths = OptionsDialog()._get_default_folders().values()
-            self._start_local_scan(list(default_paths))
+            # Limpa arquivos locais e exibe root vazio
+            self.indexer.cursor.execute(
+                "DELETE FROM files WHERE source='local'")
+            self.indexer.cursor.execute(
+                "DELETE FROM search_index WHERE source='local'")
+            self.indexer.conn.commit()
+            self.current_view = 'local'
+            self.current_folder_id = None
+            self.clear_display()
+            self.all_files_loaded = True
+            self.loading_label.setText("Nenhum arquivo encontrado.")
+            self.loading_label.show()
 
+        # Autentica e sincroniza Drive na inicialização
         self._check_initial_auth()
         self.extension_combo.setCurrentIndex(0)
 
@@ -201,29 +223,31 @@ class DriveFileGalleryApp(QMainWindow):
 
         self.scan_options_button = QPushButton("Pastas Locais")
         self.scan_options_button.clicked.connect(self._show_scan_options)
-
+        self.sync_drive_button = QPushButton("Atualizar Drive")
+        self.sync_drive_button.clicked.connect(self._start_drive_sync)
+        self.reindex_button = QPushButton("Reindexar arquivos locais")
+        self.reindex_button.clicked.connect(self._reindex_local_files)
         self.login_button = QPushButton("Login")
         self.login_button.clicked.connect(self._start_auth)
-
         self.logout_button = QPushButton("Logout")
         self.logout_button.clicked.connect(self.handle_logout)
-
         self.auth_status_label = QLabel("Verificando...")
         self.auth_status_label.setFixedWidth(150)
-
         self.clear_cache_button = QPushButton("Limpar Cache")
         self.clear_cache_button.clicked.connect(self.clear_thumbnail_cache)
+
+        unified_layout.addWidget(self.scan_options_button)
+        unified_layout.addWidget(self.sync_drive_button)
+        unified_layout.addWidget(self.reindex_button)
+        unified_layout.addWidget(self.auth_status_label)
+        unified_layout.addWidget(self.login_button)
+        unified_layout.addWidget(self.logout_button)
+        unified_layout.addWidget(self.clear_cache_button)
 
         self.completer = QCompleter(self.completer_model, self)
         self.completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
         self.completer.setFilterMode(Qt.MatchFlag.MatchContains)
         self.search_entry.setCompleter(self.completer)
-
-        unified_layout.addWidget(self.scan_options_button)
-        unified_layout.addWidget(self.auth_status_label)
-        unified_layout.addWidget(self.login_button)
-        unified_layout.addWidget(self.logout_button)
-        unified_layout.addWidget(self.clear_cache_button)
 
         main_layout.addWidget(unified_bar)
 
@@ -469,17 +493,40 @@ class DriveFileGalleryApp(QMainWindow):
         dialog = OptionsDialog(self)
         if dialog.exec() == QDialog.DialogCode.Accepted:
             selected_paths = dialog.get_selected_paths()
+            show_drive_metadata = dialog.get_show_drive_metadata()
             settings = load_settings()
             settings['scan_paths'] = selected_paths
+            settings['show_drive_metadata'] = show_drive_metadata
             save_settings(settings)
+
+            self.show_drive_metadata = show_drive_metadata
+
+            # Se marcar a opção e estiver autenticado, dispara sincronização do Drive
+            if show_drive_metadata and self.is_authenticated:
+                self._start_drive_sync()
+
+            # Sempre atualiza a visualização após mudar a opção
+            self.current_view = 'local'
+            self.current_folder_id = None
+            self.clear_display()
+            self.all_files_loaded = False
+            self.current_page = 0
 
             if selected_paths:
                 self._start_local_scan(selected_paths)
             else:
-                QMessageBox.information(
-                    self, "Aviso", "Nenhuma pasta selecionada. O escaneamento local não foi iniciado.")
-                self.current_view = 'local'
-                self.load_next_batch()
+                # Limpa arquivos locais do banco de dados
+                self.indexer.cursor.execute(
+                    "DELETE FROM files WHERE source='local'")
+                self.indexer.cursor.execute(
+                    "DELETE FROM search_index WHERE source='local'")
+                self.indexer.conn.commit()
+                self.loading_label.setText("Nenhum arquivo encontrado.")
+                self.loading_label.show()
+                self.all_files_loaded = True
+
+            # Carrega arquivos conforme nova configuração
+            self.load_next_batch()
 
     def _start_local_scan(self, paths_to_scan):
         self.progress_bar.setVisible(True)
@@ -509,7 +556,6 @@ class DriveFileGalleryApp(QMainWindow):
         self.local_scan_thread.deleteLater()
         self.local_scan_worker = None
         self.local_scan_thread = None
-        self.current_folder_id = None
 
         self.current_view = 'local'
         self.advenced_filters = {}
@@ -707,6 +753,18 @@ class DriveFileGalleryApp(QMainWindow):
                     widget.cleanup()
                 widget.deleteLater()
 
+        # Encerra thread de miniatura do painel de detalhes, se existir
+        if hasattr(self.details_panel, 'thumbnail_thread') and self.details_panel.thumbnail_thread:
+            try:
+                if self.details_panel.thumbnail_thread.isRunning():
+                    self.details_panel.thumbnail_thread.quit()
+                    self.details_panel.thumbnail_thread.wait()
+                self.details_panel.thumbnail_worker.deleteLater()
+                self.details_panel.thumbnail_thread.deleteLater()
+            except Exception:
+                pass
+            self.details_panel.thumbnail_worker = None
+            self.details_panel.thumbnail_thread = None
         self.details_panel.hide()
 
     def load_next_batch(self):
@@ -716,6 +774,10 @@ class DriveFileGalleryApp(QMainWindow):
         self.is_loading = True
         self.loading_label.show()
         QApplication.processEvents()
+
+        # Read show_drive_metadata from settings if not set
+        if not hasattr(self, 'show_drive_metadata'):
+            self.show_drive_metadata = load_settings().get('show_drive_metadata', True)
 
         search_all_sources = bool(self.search_term and self.is_authenticated)
         source = self.current_view if not search_all_sources else None
@@ -732,7 +794,7 @@ class DriveFileGalleryApp(QMainWindow):
                     'local', self.current_page, self.page_size, None, self.current_sort, filter_type, None, self.advanced_filters
                 )
                 drive_files = []
-                if self.is_authenticated:
+                if self.is_authenticated and self.show_drive_metadata:
                     drive_files = self.indexer.load_files_paged(
                         'drive', self.current_page, self.page_size, None, self.current_sort, filter_type, None, self.advanced_filters
                     )
@@ -743,7 +805,7 @@ class DriveFileGalleryApp(QMainWindow):
                     'local', self.current_page, self.page_size, None, self.current_sort, filter_type, None, self.advanced_filters
                 )
                 drive_files = []
-                if self.is_authenticated:
+                if self.is_authenticated and self.show_drive_metadata:
                     drive_files = self.indexer.load_files_paged(
                         'drive', self.current_page, self.page_size, None, self.current_sort, filter_type, None, self.advanced_filters
                     )
@@ -755,7 +817,7 @@ class DriveFileGalleryApp(QMainWindow):
                     'local', self.current_page, self.page_size, None, self.current_sort, filter_type, None, self.advanced_filters
                 )
                 drive_files = []
-                if self.is_authenticated:
+                if self.is_authenticated and self.show_drive_metadata:
                     drive_files = self.indexer.load_files_paged(
                         'drive', self.current_page, self.page_size, None, self.current_sort, filter_type, None, self.advanced_filters
                     )
@@ -862,10 +924,12 @@ class FileDetailsPanel(QFrame):
         self.form_layout.addRow(
             QLabel("<b>Descrição:</b>"), self.description_label)
 
-        self.download_button = QPushButton("Baixar Arquivo")
-        self.download_button.setVisible(False)
-        self.download_button.clicked.connect(self.download_file)
-        self.form_layout.addRow(QLabel(""), self.download_button)
+    # Botão de download removido
+
+        self.open_folder_button = QPushButton("Abrir pasta")
+        self.open_folder_button.setVisible(False)
+        self.open_folder_button.clicked.connect(self.open_folder)
+        self.form_layout.addRow(QLabel(""), self.open_folder_button)
 
         self.main_layout.addLayout(self.form_layout)
         self.main_layout.addStretch()
@@ -883,11 +947,16 @@ class FileDetailsPanel(QFrame):
         self.hide()
 
     def update_details(self, file_item):
-
+        # Encerra thread anterior de miniatura, se existir
         if hasattr(self, 'thumbnail_thread') and self.thumbnail_thread:
-            if self.thumbnail_thread.isRunning():
-                self.thumbnail_thread.quit()
-                self.thumbnail_thread.wait()
+            try:
+                if self.thumbnail_thread.isRunning():
+                    self.thumbnail_thread.quit()
+                    self.thumbnail_thread.wait()
+                self.thumbnail_worker.deleteLater()
+                self.thumbnail_thread.deleteLater()
+            except Exception:
+                pass
             self.thumbnail_worker = None
             self.thumbnail_thread = None
 
@@ -902,36 +971,126 @@ class FileDetailsPanel(QFrame):
         self.description_label.setText(file_item.get('description', 'N/A'))
         self.current_file_item = file_item
 
+        # Exibe ícone genérico inicialmente
         self.thumbnail_label.setPixmap(get_generic_thumbnail(
             file_item.get('mimeType'), size=(96, 96)))
 
-        if file_item.get('source') == 'drive' and file_item.get('mimeType') not in ['application/vnd.google-apps.folder', 'folder']:
-            self.download_button.setVisible(True)
-        else:
-            self.download_button.setVisible(False)
-        self.show()
-
         thumbnail_path = file_item.get('thumbnailPath')
         thumbnail_link = file_item.get('thumbnailLink')
+        mime = file_item.get('mimeType', '')
+        local_path = file_item.get('path')
 
-        if thumbnail_path and os.path.exists(thumbnail_path):
-            pixmap = QPixmap(thumbnail_path)
+        # Tenta exibir miniatura real para qualquer arquivo local
+        if local_path and os.path.exists(local_path):
+            pixmap = QPixmap(local_path)
             if not pixmap.isNull():
                 self.thumbnail_label.setPixmap(pixmap.scaled(
                     self.thumbnail_label.size(),
                     Qt.AspectRatioMode.KeepAspectRatio,
                     Qt.TransformationMode.SmoothTransformation
                 ))
+                self.show()
                 return
+            # PDF
+            if mime == 'application/pdf':
+                try:
+                    import fitz
+                    doc = fitz.open(local_path)
+                    page = doc.load_page(0)
+                    pix = page.get_pixmap(matrix=fitz.Matrix(0.5, 0.5))
+                    img_data = pix.tobytes('ppm')
+                    from PyQt6.QtGui import QImage
+                    qimg = QImage()
+                    qimg.loadFromData(img_data)
+                    pixmap = QPixmap.fromImage(qimg)
+                    if not pixmap.isNull():
+                        self.thumbnail_label.setPixmap(pixmap.scaled(
+                            self.thumbnail_label.size(),
+                            Qt.AspectRatioMode.KeepAspectRatio,
+                            Qt.TransformationMode.SmoothTransformation
+                        ))
+                        self.show()
+                        return
+                except Exception:
+                    pass
+            # Vídeo
+            if mime.startswith('video/'):
+                try:
+                    import cv2
+                    cap = cv2.VideoCapture(local_path)
+                    ret, frame = cap.read()
+                    cap.release()
+                    if ret:
+                        import numpy as np
+                        frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                        h, w, ch = frame.shape
+                        bytes_per_line = ch * w
+                        from PyQt6.QtGui import QImage
+                        qimg = QImage(frame.data, w, h, bytes_per_line,
+                                      QImage.Format.Format_RGB888)
+                        pixmap = QPixmap.fromImage(qimg)
+                        if not pixmap.isNull():
+                            self.thumbnail_label.setPixmap(pixmap.scaled(
+                                self.thumbnail_label.size(),
+                                Qt.AspectRatioMode.KeepAspectRatio,
+                                Qt.TransformationMode.SmoothTransformation
+                            ))
+                            self.show()
+                            return
+                except Exception:
+                    pass
+            # Outros tipos (doc, xls, txt, etc): tenta obter ícone do sistema
+            try:
+                from PyQt6.QtGui import QIcon
+                icon = QIcon(local_path)
+                pixmap = icon.pixmap(self.thumbnail_label.size())
+                if not pixmap.isNull():
+                    self.thumbnail_label.setPixmap(pixmap)
+                    self.show()
+                    return
+            except Exception:
+                pass
 
+        # Miniatura do Drive
         if file_item.get('source') == 'drive' and thumbnail_link:
             self.thumbnail_thread = QThread()
-            self.thumbnail_worker = ThumbnailWorker(
-                thumbnail_link, file_item.get('id'))
+            self.thumbnail_worker = ThumbnailWorker(thumbnail_link, file_item)
             self.thumbnail_worker.moveToThread(self.thumbnail_thread)
             self.thumbnail_thread.started.connect(self.thumbnail_worker.run)
             self.thumbnail_worker.finished.connect(self.on_thumbnail_loaded)
             self.thumbnail_thread.start()
+
+        # Download removido: não exibe botão para arquivos do Drive
+
+        # Exibe botão 'Abrir pasta' para arquivos locais
+        if file_item.get('source') == 'local' and file_item.get('path') and os.path.exists(file_item.get('path')):
+            self.open_folder_button.setVisible(True)
+        else:
+            self.open_folder_button.setVisible(False)
+
+    def open_folder(self):
+        import os
+        import sys
+        from PyQt6.QtWidgets import QMessageBox
+        file_path = self.current_file_item.get('path')
+        if not file_path or not os.path.exists(file_path):
+            QMessageBox.warning(self, "Arquivo não encontrado",
+                                "O caminho do arquivo não existe.")
+            return
+        folder = os.path.dirname(file_path)
+        try:
+            if sys.platform == "win32":
+                os.startfile(folder)
+            elif sys.platform == "darwin":
+                import subprocess
+                subprocess.Popen(["open", folder])
+            else:
+                import subprocess
+                subprocess.Popen(["xdg-open", folder])
+        except Exception as e:
+            QMessageBox.critical(self, "Erro ao abrir pasta",
+                                 f"Não foi possível abrir a pasta: {e}")
+        self.show()
 
     def on_thumbnail_loaded(self, image_data, thumbnail_path):
 
@@ -964,60 +1123,7 @@ class FileDetailsPanel(QFrame):
             self.thumbnail_worker = None
             self.thumbnail_thread = None
 
-    def download_file(self):
-        if self.current_file_item and self.parent_app and hasattr(self.parent_app, 'service'):
-            from PyQt6.QtWidgets import QMessageBox
-            if self.parent_app.service is None:
-                QMessageBox.warning(
-                    self, "Aviso", "Você precisa estar autenticado no Google Drive para baixar arquivos.")
-                return
-
-            self.download_dialog = DownloadProgressDialog(
-                self.current_file_item.get('name'), self)
-            self.download_dialog.show()
-
-            self.download_thread = QThread(self)
-            self.download_worker = DownloadWorker(
-                self.parent_app.service, self.current_file_item)
-            self.download_worker.moveToThread(self.download_thread)
-
-            self.download_worker.download_progress.connect(
-                self.download_dialog.update_progress)
-            self.download_worker.download_finished.connect(
-                lambda path, name: self.download_dialog.accept())
-            self.download_worker.download_finished.connect(lambda path, name: QMessageBox.information(
-                self, "Download concluído", f"O arquivo '{name}' foi baixado com sucesso."))
-            self.download_worker.download_failed.connect(
-                lambda msg: self.download_dialog.reject())
-            self.download_worker.download_failed.connect(
-                lambda msg: QMessageBox.critical(self, "Erro no Download", msg))
-
-            def after_download(path, name):
-                for i in range(self.parent_app.files_layout.count()):
-                    item = self.parent_app.files_layout.itemAt(i)
-                    widget = item.widget()
-                    if hasattr(widget, "file_item") and widget.file_item.get("id") == self.current_file_item.get("id"):
-                        widget.local_file_path = path
-                        widget.file_item["path"] = path
-                        break
-
-            self.download_worker.download_finished.connect(after_download)
-
-            def cleanup():
-                self.download_thread.quit()
-                self.download_thread.wait()
-                self.download_worker.deleteLater()
-                self.download_thread.deleteLater()
-                self.download_thread = None
-                self.download_worker = None
-
-            self.download_worker.download_finished.connect(
-                lambda *_: QTimer.singleShot(0, cleanup))
-            self.download_worker.download_failed.connect(
-                lambda *_: QTimer.singleShot(0, cleanup))
-
-            self.download_thread.started.connect(self.download_worker.run)
-            self.download_thread.start()
+    # Função de download removida
 
 
 class ClickableLabel(QLabel):
