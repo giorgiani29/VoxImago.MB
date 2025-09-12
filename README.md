@@ -93,6 +93,29 @@ python main.py
 4. Escolha pastas locais para escanear.
 5. Use a barra de busca e filtros para encontrar arquivos.
 
+### Como funciona a sincronização de descrições do Drive para arquivos locais
+
+Durante a sincronização, o sistema compara cada arquivo do Drive com os arquivos locais pelo nome e tamanho. Se encontrar um arquivo local idêntico, copia a descrição do Drive para o campo de descrição do arquivo local e atualiza o índice de busca. Assim, buscas por descrição encontram o arquivo local mesmo que ele não possua metadados próprios.
+
+```python
+local_files = indexer.load_files_paged(
+    source='local', page=0, page_size=10000, search_term=None)
+for drive_item in results:
+    for local_item in local_files:
+        if (local_item['name'] == drive_item['name'] and
+            local_item['size'] == drive_item['size'] and
+            local_item['size'] > 0):
+            indexer.cursor.execute(
+                "UPDATE files SET description = ? WHERE file_id = ?",
+                (drive_item['description'], local_item['id'])
+            )
+            indexer.cursor.execute(
+                "UPDATE search_index SET description = ? WHERE file_id = ?",
+                (drive_item['description'], local_item['id'])
+            )
+            indexer.conn.commit()
+```
+
 ## Observações Importantes
 
 - Não compartilhe `credentials.json` ou `token.json` publicamente.
