@@ -47,7 +47,6 @@ class FileItemWidget(QFrame):
         self.main_layout.setAlignment(
             Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
 
-        # Sempre exibe ícone genérico
         self.thumbnail_label = QLabel()
         self.thumbnail_label.setFixedSize(48, 48)
         pixmap = get_generic_thumbnail(self.file_item.get('mimeType'))
@@ -62,7 +61,6 @@ class FileItemWidget(QFrame):
         self.name_label.setFont(QFont("Arial", 10))
         self.name_label.setWordWrap(False)
 
-        # Mostra status local/remoto para arquivos do Drive
         if self.file_item.get('source') == 'drive':
             local_path = self.file_item.get('path')
             if local_path and os.path.exists(local_path):
@@ -98,8 +96,6 @@ class FileItemWidget(QFrame):
         self.star_button.clicked.connect(self.toggle_starred)
         self.main_layout.addWidget(self.star_button)
 
-    # Miniatura já exibida acima
-
     def toggle_starred(self):
         is_now_starred = not self.parent_app.indexer.is_starred(
             self.file_item.get('id'))
@@ -121,7 +117,6 @@ class FileItemWidget(QFrame):
             if self.file_item.get('mimeType') == 'application/vnd.google-apps.folder' or self.file_item.get('mimeType') == 'folder':
                 self.folder_clicked.emit(self.file_item.get('id'))
             else:
-                # Se for arquivo do Drive, apenas seleciona para busca local
                 self.selected.emit(self.file_item)
 
     def mouseMoveEvent(self, event):
@@ -135,7 +130,6 @@ class FileItemWidget(QFrame):
             if self.file_item.get('mimeType') == 'application/vnd.google-apps.folder' or self.file_item.get('mimeType') == 'folder':
                 self.folder_clicked.emit(self.file_item.get('id'))
             else:
-                # Se for arquivo do Drive, apenas seleciona para busca local
                 self.selected.emit(self.file_item)
 
     def open_file(self):
@@ -155,8 +149,6 @@ class FileItemWidget(QFrame):
             QMessageBox.information(
                 self, "Arquivo do Drive", "Apenas metadados disponíveis para busca local.")
 
-    # Função de download removida
-
     def do_drag(self):
         if self.file_item.get('source') == 'local' or (self.local_file_path and os.path.exists(self.local_file_path)):
             drag = QDrag(self)
@@ -165,7 +157,6 @@ class FileItemWidget(QFrame):
             mime_data.setUrls(urls)
             drag.setMimeData(mime_data)
 
-            # Usa ícone genérico para o tipo de arquivo
             pixmap = get_generic_thumbnail(self.file_item.get('mimeType'))
             if pixmap:
                 drag.setPixmap(pixmap)
@@ -183,18 +174,12 @@ class FileItemWidget(QFrame):
         mime_data.setText(self.file_item.get('name'))
         drag.setMimeData(mime_data)
 
-        # Usa ícone genérico para o tipo de arquivo
         pixmap = get_generic_thumbnail(self.file_item.get('mimeType'))
         if pixmap:
             drag.setPixmap(pixmap)
             drag.setHotSpot(pixmap.rect().center())
 
         drag.exec(Qt.DropAction.CopyAction)
-
-        # Download removido: não permite arrastar arquivos do Drive
-
-    # Função de download removida
-
 
 class OptionsDialog(QDialog):
     def __init__(self, parent=None):
@@ -234,7 +219,6 @@ class OptionsDialog(QDialog):
                 self.main_layout.insertWidget(
                     self.main_layout.count() - 2, checkbox)
 
-        # Checkbox for Drive metadata
         settings = load_settings()
         show_drive_metadata = settings.get('show_drive_metadata', True)
         self.drive_metadata_checkbox = QCheckBox("Exibir metadados do Drive")

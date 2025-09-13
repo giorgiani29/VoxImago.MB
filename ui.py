@@ -84,7 +84,6 @@ class DriveFileGalleryApp(QMainWindow):
         if scan_paths and len(scan_paths) > 0:
             self._start_local_scan(scan_paths)
         else:
-            # Limpa arquivos locais e exibe root vazio
             self.indexer.cursor.execute(
                 "DELETE FROM files WHERE source='local'")
             self.indexer.cursor.execute(
@@ -97,7 +96,6 @@ class DriveFileGalleryApp(QMainWindow):
             self.loading_label.setText("Nenhum arquivo encontrado.")
             self.loading_label.show()
 
-        # Autentica e sincroniza Drive na inicialização
         self._check_initial_auth()
         self.extension_combo.setCurrentIndex(0)
 
@@ -501,11 +499,9 @@ class DriveFileGalleryApp(QMainWindow):
 
             self.show_drive_metadata = show_drive_metadata
 
-            # Se marcar a opção e estiver autenticado, dispara sincronização do Drive
             if show_drive_metadata and self.is_authenticated:
                 self._start_drive_sync()
 
-            # Sempre atualiza a visualização após mudar a opção
             self.current_view = 'local'
             self.current_folder_id = None
             self.clear_display()
@@ -515,7 +511,6 @@ class DriveFileGalleryApp(QMainWindow):
             if selected_paths:
                 self._start_local_scan(selected_paths)
             else:
-                # Limpa arquivos locais do banco de dados
                 self.indexer.cursor.execute(
                     "DELETE FROM files WHERE source='local'")
                 self.indexer.cursor.execute(
@@ -525,7 +520,6 @@ class DriveFileGalleryApp(QMainWindow):
                 self.loading_label.show()
                 self.all_files_loaded = True
 
-            # Carrega arquivos conforme nova configuração
             self.load_next_batch()
 
     def _start_local_scan(self, paths_to_scan):
@@ -753,7 +747,6 @@ class DriveFileGalleryApp(QMainWindow):
                     widget.cleanup()
                 widget.deleteLater()
 
-        # Encerra thread de miniatura do painel de detalhes, se existir
         if hasattr(self.details_panel, 'thumbnail_thread') and self.details_panel.thumbnail_thread:
             try:
                 if self.details_panel.thumbnail_thread.isRunning():
@@ -775,7 +768,6 @@ class DriveFileGalleryApp(QMainWindow):
         self.loading_label.show()
         QApplication.processEvents()
 
-        # Read show_drive_metadata from settings if not set
         if not hasattr(self, 'show_drive_metadata'):
             self.show_drive_metadata = load_settings().get('show_drive_metadata', True)
 
@@ -924,8 +916,6 @@ class FileDetailsPanel(QFrame):
         self.form_layout.addRow(
             QLabel("<b>Descrição:</b>"), self.description_label)
 
-    # Botão de download removido
-
         self.open_folder_button = QPushButton("Abrir pasta")
         self.open_folder_button.setVisible(False)
         self.open_folder_button.clicked.connect(self.open_folder)
@@ -947,7 +937,6 @@ class FileDetailsPanel(QFrame):
         self.hide()
 
     def update_details(self, file_item):
-        # Encerra thread anterior de miniatura, se existir
         if hasattr(self, 'thumbnail_thread') and self.thumbnail_thread:
             try:
                 if self.thumbnail_thread.isRunning():
@@ -971,7 +960,6 @@ class FileDetailsPanel(QFrame):
         self.description_label.setText(file_item.get('description', 'N/A'))
         self.current_file_item = file_item
 
-        # Exibe ícone genérico inicialmente
         self.thumbnail_label.setPixmap(get_generic_thumbnail(
             file_item.get('mimeType'), size=(96, 96)))
 
@@ -980,7 +968,6 @@ class FileDetailsPanel(QFrame):
         mime = file_item.get('mimeType', '')
         local_path = file_item.get('path')
 
-        # Tenta exibir miniatura real para qualquer arquivo local
         if local_path and os.path.exists(local_path):
             pixmap = QPixmap(local_path)
             if not pixmap.isNull():
@@ -991,7 +978,6 @@ class FileDetailsPanel(QFrame):
                 ))
                 self.show()
                 return
-            # PDF
             if mime == 'application/pdf':
                 try:
                     import fitz
@@ -1013,7 +999,6 @@ class FileDetailsPanel(QFrame):
                         return
                 except Exception:
                     pass
-            # Vídeo
             if mime.startswith('video/'):
                 try:
                     import cv2
@@ -1039,7 +1024,6 @@ class FileDetailsPanel(QFrame):
                             return
                 except Exception:
                     pass
-            # Outros tipos (doc, xls, txt, etc): tenta obter ícone do sistema
             try:
                 from PyQt6.QtGui import QIcon
                 icon = QIcon(local_path)
@@ -1051,7 +1035,6 @@ class FileDetailsPanel(QFrame):
             except Exception:
                 pass
 
-        # Miniatura do Drive
         if file_item.get('source') == 'drive' and thumbnail_link:
             self.thumbnail_thread = QThread()
             self.thumbnail_worker = ThumbnailWorker(thumbnail_link, file_item)
@@ -1060,9 +1043,6 @@ class FileDetailsPanel(QFrame):
             self.thumbnail_worker.finished.connect(self.on_thumbnail_loaded)
             self.thumbnail_thread.start()
 
-        # Download removido: não exibe botão para arquivos do Drive
-
-        # Exibe botão 'Abrir pasta' para arquivos locais
         if file_item.get('source') == 'local' and file_item.get('path') and os.path.exists(file_item.get('path')):
             self.open_folder_button.setVisible(True)
         else:
@@ -1081,6 +1061,7 @@ class FileDetailsPanel(QFrame):
         try:
             if sys.platform == "win32":
                 os.startfile(folder)
+                # verificar se funciona no windows????
             elif sys.platform == "darwin":
                 import subprocess
                 subprocess.Popen(["open", folder])
@@ -1122,9 +1103,6 @@ class FileDetailsPanel(QFrame):
             self.thumbnail_thread.deleteLater()
             self.thumbnail_worker = None
             self.thumbnail_thread = None
-
-    # Função de download removida
-
 
 class ClickableLabel(QLabel):
     clicked = pyqtSignal()

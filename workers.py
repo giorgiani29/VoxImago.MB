@@ -315,7 +315,7 @@ class LocalScanWorker(QObject):
         self.finished.emit()
 
     def stop(self):
-        # Implemente aqui a lógica de parada, se necessário
+        # Preciso implementar uma logica de parada....
         pass
 
 
@@ -333,7 +333,6 @@ class DriveSyncWorker(QObject):
     def run(self):
         self.update_status.emit("Sincronizando arquivos e pastas do Drive...")
         try:
-            # Busca arquivos e pastas do Drive
             results = []
             page_token = None
             while True:
@@ -363,13 +362,11 @@ class DriveSyncWorker(QObject):
                 page_token = response.get('nextPageToken', None)
                 if not page_token:
                     break
-            # Salva no banco
             conn = open_db_for_thread(self.db_name)
             from database import FileIndexer
             indexer = FileIndexer(self.db_name)
             indexer.save_files_in_batch(results, source='drive')
 
-            # --- NOVO: Atualiza descrição do arquivo local idêntico ---
             local_files = indexer.load_files_paged(
                 source='local', page=0, page_size=10000, search_term=None)
             for drive_item in results:
@@ -377,18 +374,15 @@ class DriveSyncWorker(QObject):
                     if (local_item['name'] == drive_item['name'] and
                         local_item['size'] == drive_item['size'] and
                             local_item['size'] > 0):
-                        # Atualiza descrição do arquivo local
                         indexer.cursor.execute(
                             "UPDATE files SET description = ? WHERE file_id = ?",
                             (drive_item['description'], local_item['id'])
                         )
-                        # Atualiza também o índice de busca
                         indexer.cursor.execute(
                             "UPDATE search_index SET description = ? WHERE file_id = ?",
                             (drive_item['description'], local_item['id'])
                         )
                         indexer.conn.commit()
-            # --- FIM NOVO ---
 
             conn.close()
             self.update_status.emit(
