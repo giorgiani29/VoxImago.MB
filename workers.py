@@ -4,6 +4,7 @@
 
 from utils import load_settings, save_settings
 from datetime import datetime
+from database import remove_accents
 from database import open_db_for_thread
 from utils import get_thumbnail_cache_key
 from googleapiclient.http import MediaIoBaseDownload
@@ -185,6 +186,9 @@ class LocalScanWorker(QObject):
             self.scan_path = [scan_path]
         else:
             self.scan_path = scan_path
+        self.is_running = True
+        self.total_processed = 0
+        self.conn = sqlite3.connect(self.db_name, timeout=30.0)
 
     def run(self):
         import os
@@ -194,8 +198,14 @@ class LocalScanWorker(QObject):
         batch_files = []
         batch_search = []
         for scan_path in self.scan_path:
+            if not self.is_running:
+                break
             for root, dirs, files in os.walk(scan_path):
+                if not self.is_running:
+                    break
                 for name in dirs:
+                    if not self.is_running:
+                        break
                     dir_path = os.path.join(root, name)
                     parent_id = '' if root == scan_path else os.path.dirname(
                         dir_path)
@@ -240,7 +250,7 @@ class LocalScanWorker(QObject):
                         dir_item['id'],
                         dir_item['source']
                     ))
-                    if len(batch_files) >= 500:
+                    if len(batch_files) >= 100:
                         cursor.executemany(
                             "INSERT OR REPLACE INTO files VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)", batch_files)
                         cursor.executemany(
@@ -248,8 +258,11 @@ class LocalScanWorker(QObject):
                         conn.commit()
                         batch_files.clear()
                         batch_search.clear()
-                        self.progress_update.emit(500)
+                        self.total_processed += 100
+                        self.progress_update.emit(self.total_processed)
                 for name in files:
+                    if not self.is_running:
+                        break
                     file_path = os.path.join(root, name)
                     parent_id = '' if root == scan_path else os.path.dirname(
                         file_path)
@@ -295,7 +308,7 @@ class LocalScanWorker(QObject):
                         file_item['id'],
                         file_item['source']
                     ))
-                    if len(batch_files) >= 500:
+                    if len(batch_files) >= 100:
                         cursor.executemany(
                             "INSERT OR REPLACE INTO files VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)", batch_files)
                         cursor.executemany(
@@ -303,73 +316,97 @@ class LocalScanWorker(QObject):
                         conn.commit()
                         batch_files.clear()
                         batch_search.clear()
-                        self.progress_update.emit(500)
+                        self.total_processed += 100
+                        self.progress_update.emit(self.total_processed)
         if batch_files:
             cursor.executemany(
                 "INSERT OR REPLACE INTO files VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)", batch_files)
             cursor.executemany(
                 "INSERT OR REPLACE INTO search_index VALUES (?,?,?,?)", batch_search)
             conn.commit()
-            self.progress_update.emit(len(batch_files))
+            self.total_processed += len(batch_files)
+            self.progress_update.emit(self.total_processed)
         conn.close()
         self.finished.emit()
 
     def stop(self):
-        # Preciso implementar uma logica de parada....
-        pass
+        self.is_running = False
 
 
 class DriveSyncWorker(QObject):
     sync_finished = pyqtSignal()
     sync_failed = pyqtSignal(str)
     update_status = pyqtSignal(str)
-    progress_update = pyqtSignal(int)
+    progress_update = pyqtSignal(int, str)
+    finished = pyqtSignal()
 
-    def __init__(self, service, db_name='file_index.db', parent=None):
-        super().__init__(parent)
+    def __init__(self, service, db_name='file_index.db'):
+        super().__init__()
         self.service = service
         self.db_name = db_name
+        self.is_running = True
+
+    def terminate(self):
+        self.is_running = False
 
     def run(self):
         self.update_status.emit("Sincronizando arquivos e pastas do Drive...")
         try:
             results = []
             page_token = None
-            while True:
+            while self.is_running:
                 response = self.service.files().list(
                     q="trashed = false",
                     fields="nextPageToken, files(id, name, mimeType, description, parents, modifiedTime, createdTime, size, webViewLink, thumbnailLink)",
                     pageSize=1000,
                     pageToken=page_token
                 ).execute()
-                for file in response.get('files', []):
-                    item = {
-                        'id': file.get('id'),
-                        'name': file.get('name'),
-                        'mimeType': file.get('mimeType'),
-                        'source': 'drive',
-                        'description': file.get('description', ''),
-                        'thumbnailLink': file.get('thumbnailLink', ''),
-                        'thumbnailPath': '',
-                        'size': int(file.get('size', 0)) if file.get('size') else 0,
-                        'modifiedTime': int(datetime.strptime(file.get('modifiedTime'), "%Y-%m-%dT%H:%M:%S.%fZ").timestamp()) if file.get('modifiedTime') else 0,
-                        'createdTime': int(datetime.strptime(file.get('createdTime'), "%Y-%m-%dT%H:%M:%S.%fZ").timestamp()) if file.get('createdTime') else 0,
-                        'parentId': file.get('parents', [''])[0] if file.get('parents') else '',
-                        'path': None,
-                        'webContentLink': file.get('webViewLink', ''),
-                    }
-                    results.append(item)
+                files = response.get('files', [])
+                results.extend(files)
                 page_token = response.get('nextPageToken', None)
                 if not page_token:
                     break
+
+            if not self.is_running:
+                return
+
+            total_files = len(results)
+            processed_items = []
+            for i, file in enumerate(results):
+                if not self.is_running:
+                    return
+                item = {
+                    'id': file.get('id'),
+                    'name': file.get('name'),
+                    'mimeType': file.get('mimeType'),
+                    'source': 'drive',
+                    'description': file.get('description', ''),
+                    'thumbnailLink': file.get('thumbnailLink', ''),
+                    'thumbnailPath': '',
+                    'size': int(file.get('size', 0)) if file.get('size') else 0,
+                    'modifiedTime': int(datetime.strptime(file.get('modifiedTime'), "%Y-%m-%dT%H:%M:%S.%fZ").timestamp()) if file.get('modifiedTime') else 0,
+                    'createdTime': int(datetime.strptime(file.get('createdTime'), "%Y-%m-%dT%H:%M:%S.%fZ").timestamp()) if file.get('createdTime') else 0,
+                    'parentId': file.get('parents', [''])[0] if file.get('parents') else '',
+                    'path': None,
+                    'webContentLink': file.get('webViewLink', ''),
+                }
+                processed_items.append(item)
+
+                progress = int((i + 1) / total_files * 100)
+                self.progress_update.emit(
+                    progress, f"Sincronizando {file['name']}...")
+
+            if not self.is_running:
+                return
+
             conn = open_db_for_thread(self.db_name)
             from database import FileIndexer
             indexer = FileIndexer(self.db_name)
-            indexer.save_files_in_batch(results, source='drive')
+            indexer.save_files_in_batch(processed_items, source='drive')
 
             local_files = indexer.load_files_paged(
                 source='local', page=0, page_size=10000, search_term=None)
-            for drive_item in results:
+            for drive_item in processed_items:
                 for local_item in local_files:
                     if (local_item['name'] == drive_item['name'] and
                         local_item['size'] == drive_item['size'] and
@@ -380,13 +417,14 @@ class DriveSyncWorker(QObject):
                         )
                         indexer.cursor.execute(
                             "UPDATE search_index SET description = ? WHERE file_id = ?",
-                            (drive_item['description'], local_item['id'])
+                            (remove_accents(
+                                drive_item['description'].lower()), local_item['id'])
                         )
                         indexer.conn.commit()
 
             conn.close()
             self.update_status.emit(
-                f"Sincronização concluída: {len(results)} arquivos/pastas.")
+                f"Sincronização concluída: {len(processed_items)} arquivos/pastas.")
             self.sync_finished.emit()
         except Exception as e:
             self.sync_failed.emit(f"Erro na sincronização do Drive: {e}")
