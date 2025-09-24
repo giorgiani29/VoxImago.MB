@@ -1,69 +1,81 @@
-# Vox Imago Beta
+# Vox Imago
 
 Busca unificada de arquivos locais e Google Drive com filtros avançados, favoritos, visualização de detalhes e interface moderna em PyQt6.
 
 ## Mudanças Recentes (Setembro 2025)
 
-- **Busca por descrição do Drive encontra arquivos locais idênticos:**
-  - Agora, ao sincronizar o Drive, a descrição dos arquivos do Drive é copiada para o arquivo local idêntico (mesmo nome e tamanho). Assim, ao buscar por uma descrição, o arquivo local é encontrado mesmo que originalmente não tivesse metadados.
-- **Remoção completa da lógica de download:**
-  - Todas as funções, botões e classes relacionadas a download de arquivos do Google Drive foram removidas do código. O app agora utiliza apenas os metadados para busca e exibição.
-- **Thumbnails reais apenas no painel de detalhes:**
-  - Na lista principal, é exibido apenas o ícone genérico do tipo de arquivo. Miniaturas reais aparecem apenas no painel de detalhes.
-- **Limpeza de código legado:**
-  - Código antigo e funções não utilizadas foram removidos dos módulos principais, deixando o projeto mais limpo e fácil de manter.
+- **Novo ponto de entrada (`app.py`):**
+  - O aplicativo agora é iniciado pelo arquivo `app.py` em vez de `main.py`.
+- **Lista de arquivos otimizada com `QListView` + `QAbstractListModel`:**
+  - Substitui `QTableWidget` antigo, garantindo escalabilidade e melhor performance.
+- **Lazy loading paginado:**
+  - Arquivos são carregados em lotes (`page_size`) enquanto o usuário rola a lista.
+- **Filtros avançados completos:**
+  - Filtragem por extensão, data de criação, data de modificação e favoritos.
+- **Interface aprimorada:**
+  - Tema escuro moderno via QSS.
+  - Ícones genéricos na lista principal; miniaturas reais apenas no painel de detalhes.
+- **Modo Explorer Local:**
+  - Permite navegação dedicada apenas a arquivos locais.
+- **Ícone de bandeja do sistema (SystemTray):**
+  - Com menu de ferramentas e opções rápidas (mostrar janela, status dos serviços, sair).
+- **Autocomplete de busca com debounce:**
+  - Sugestões inteligentes de pesquisa com base no índice local e do Drive.
+- **Remoção da lógica de download:**
+  - O app agora usa exclusivamente metadados do Drive para busca e exibição.
 
-## Principais Mudanças
+---
 
-- **Refatoração e organização:** O código foi dividido em módulos especializados (`main.py`, `app.py`, `workers.py`, `database.py`, `utils.py`, `widgets.py`, `ui.py`), facilitando manutenção, testes e colaboração.
-- **Novo ponto de entrada:** O aplicativo agora é iniciado pelo arquivo `main.py`, que centraliza a inicialização da interface gráfica.
-- **Sincronização aprimorada:** Métodos de busca e sincronização foram revisados para maior eficiência e clareza, buscando separadamente seus arquivos do Google Drive e arquivos explicitamente compartilhados com você.
-- **Performance:** Estrutura preparada para otimizações futuras, como commits em lote no banco de dados e redução de travamentos ao lidar com grandes volumes de arquivos.
+## Principais Mudanças Anteriores
+
+- **Busca por descrição do Drive encontra arquivos locais idênticos.**
+- **Thumbnails reais apenas no painel de detalhes.**
+- **Limpeza de código legado.**
+- **Refatoração e organização em módulos:** (`app.py`, `workers.py`, `database.py`, `utils.py`, `widgets.py`, `ui.py`, `file_list_model.py`, `file_list_delegate.py`).
+
+---
+
 ## Otimizações Implementadas
 
 ### 1. Índices e PRAGMA no SQLite
-- Índices criados para os principais campos de busca e filtro (`source`, `parentId`, `mimeType`, `starred`, `name`).
+- Índices criados para campos de busca e filtro (`source`, `parentId`, `mimeType`, `starred`, `name`).
 - PRAGMA otimizados: `journal_mode=WAL`, `synchronous=NORMAL`, `temp_store=MEMORY`, `cache_size=5000`.
 
 ### 2. Conexões SQLite por Thread
-- Cada worker/thread abre sua própria conexão SQLite, aplicando PRAGMA para performance.
+- Cada worker abre sua própria conexão SQLite com PRAGMAs aplicados.
 
 ### 3. Pool Controlado de Miniaturas
-- Uso de `QThreadPool` com limite de threads para baixar miniaturas em paralelo de forma controlada.
+- `QThreadPool` com limite de threads para controlar carregamento de miniaturas.
 
 ### 4. Cache de Miniaturas por Hash
-- Chave de cache baseada em `(path, mtime, size)` para arquivos locais e `(file_id, modifiedTime)` para arquivos do Google Drive.
+- `(path, mtime, size)` para locais e `(file_id, modifiedTime)` para arquivos do Drive.
+
+### 5. Lazy Loading de Arquivos
+- Paginação com `page_size` + carregamento incremental conforme rolagem.
+
+### 6. UI Escalável com `QListView`
+- Substitui widgets menos performáticos.
 
 ---
 
-## Otimizações Parcialmente Implementadas
+## Otimizações Futuras
 
-### 1. Escaneamento Local em Batches
-- Inserção em lote já ocorre, mas pode ser ajustada para batches de 500 registros e commit a cada lote.
-
-### 2. Sincronização Incremental do Google Drive
-- Sincronização considera o timestamp da última sync, mas precisa garantir busca apenas de arquivos modificados após esse ponto.
-
-### 3. Melhorias de Autocomplete
-- Sugestões de busca com debounce já presentes, mas precisam ser limitadas para textos com 3 ou mais caracteres.
-
-### 4. Limpeza de Código Duplicado
-- Algumas funções duplicadas ainda existem e precisam ser removidas.
+- Melhorar ainda mais a sincronização incremental do Drive (apenas arquivos alterados).  
+- Limpeza final de funções duplicadas.  
+- Adicionar logging detalhado e profiling (`cProfile`, `snakeviz`).  
 
 ---
 
-## Otimizações Pendentes
-
-- Migrar UI para `QListView` + `QAbstractListModel` para melhor escalabilidade.
-- Implementar lazy loading de thumbnails (miniaturas apenas para itens visíveis).
-- Adicionar logs de tempo e profiling (`cProfile`, `snakeviz`) para análise de performance.
 ## Funcionalidades
 
-- Busca por nome, descrição, frases entre aspas, OR, e exclusão de termos (-palavra)
-- Filtros por tipo, extensão, data de criação/modificação e favoritos
-- Visualização de detalhes com thumbnail ampliada e barra de rolagem
-- Escaneamento de múltiplas pastas locais
-- Interface moderna e responsiva em PyQt6
+- Busca avançada: nome, descrição, frases entre aspas, `OR`, exclusão com `-palavra`.
+- Filtros: tipo de arquivo, extensão, datas de criação/modificação, favoritos.
+- Visualização de detalhes com thumbnail ampliada.
+- Escaneamento de múltiplas pastas locais.
+- Sincronização com Google Drive (somente metadados).
+- Interface moderna em PyQt6 (tema escuro + SystemTray).
+
+---
 
 ## Requisitos
 
@@ -80,64 +92,26 @@ Instale as dependências com:
 pip install -r requirements.txt
 ```
 
+---
+
 ## Como usar
 
 1. Adicione seu arquivo `credentials.json` do Google Cloud na pasta do projeto.
 2. Execute o aplicativo:
 
 ```sh
-python main.py
+python app.py
 ```
 
-3. Faça login no Google Drive para sincronizar arquivos.
+3. Faça login no Google Drive para sincronizar metadados.
 4. Escolha pastas locais para escanear.
-5. Use a barra de busca e filtros para encontrar arquivos.
+5. Use a barra de busca e os filtros avançados para encontrar arquivos.
 
-### Como funciona a sincronização de descrições do Drive para arquivos locais
+---
 
-Durante a sincronização, o sistema compara cada arquivo do Drive com os arquivos locais pelo nome e tamanho. Se encontrar um arquivo local idêntico, copia a descrição do Drive para o campo de descrição do arquivo local e atualiza o índice de busca. Assim, buscas por descrição encontram o arquivo local mesmo que ele não possua metadados próprios.
+## Como funciona a sincronização de descrições do Drive para arquivos locais
 
-```python
-local_files = indexer.load_files_paged(
-    source='local', page=0, page_size=10000, search_term=None)
-for drive_item in results:
-    for local_item in local_files:
-        if (local_item['name'] == drive_item['name'] and
-            local_item['size'] == drive_item['size'] and
-            local_item['size'] > 0):
-            indexer.cursor.execute(
-                "UPDATE files SET description = ? WHERE file_id = ?",
-                (drive_item['description'], local_item['id'])
-            )
-            indexer.cursor.execute(
-                "UPDATE search_index SET description = ? WHERE file_id = ?",
-                (drive_item['description'], local_item['id'])
-            )
-            indexer.conn.commit()
-```
+Durante a sincronização, o sistema compara cada arquivo do Drive com os locais pelo nome e tamanho.  
+Se encontrar um arquivo local idêntico, copia a descrição do Drive para o arquivo local e atualiza o índice.  
+Assim, buscas por descrição encontram o arquivo local mesmo sem metadados próprios.
 
-## Observações Importantes
-
-- Não compartilhe `credentials.json` ou `token.json` publicamente.
-- O banco de dados (`file_index.db`) e a pasta de miniaturas (`thumbnails_cache/`) são gerados automaticamente.
-- Para dúvidas ou sugestões, abra uma issue no GitHub.
-- **Atenção:**  
-  Para acessar arquivos do Google Drive, é obrigatório adicionar o arquivo `credentials.json` na pasta do aplicativo.  
-  Este arquivo deve ser gerado no Google Cloud Console, ativando a API do Google Drive e criando credenciais do tipo "Aplicativo para área de trabalho".  
-  Para testes internos, solicite o arquivo ao responsável pelo projeto.  
-  Não compartilhe nem publique o `credentials.json` em locais públicos.
-
-## Estrutura do Projeto
-
-- `main.py`: Ponto de entrada principal do aplicativo.
-- `app.py`: Inicialização da interface gráfica e janela principal.
-- `workers.py`: Tarefas assíncronas (sincronização, escaneamento local, downloads).
-- `database.py`: Manipulação do banco de dados SQLite, busca, filtros e favoritos.
-- `utils.py`: Funções utilitárias usadas em várias partes do projeto.
-- `widgets.py`: Componentes customizados da interface gráfica.
-- `ui.py`: Interface gráfica principal e componentes visuais.
-- `requirements.txt`: Lista de dependências.
-
-## Licença
-
-Este projeto é distribuído apenas para testes internos da equipe.
