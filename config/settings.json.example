@@ -1,0 +1,20 @@
+{
+  "example": "Este é um arquivo de exemplo",
+  "instruction": "Renomeie para settings.json - será criado automaticamente pelo app",
+  "description": "Configurações do aplicativo geradas automaticamente",
+  "typical_content": {
+    "local_folders": [
+      "C:/Users/SeuUsuario/Documents",
+      "C:/Users/SeuUsuario/Pictures"
+    ],
+    "window_geometry": [100, 100, 1200, 800],
+    "last_filter_state": {
+      "file_type": "all",
+      "extension": "",
+      "date_from": null,
+      "date_to": null
+    },
+    "theme": "dark"
+  },
+  "note": "Este arquivo é gerado automaticamente - não precisa criar manualmente"
+}

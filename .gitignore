@@ -1,0 +1,184 @@
+# VoxImago.MB - Arquivo .gitignore
+# Define o que NÃO deve ser enviado para o GitHub
+
+# =================================
+# 🔐 ARQUIVOS SENSÍVEIS (NUNCA COMMITAR!)
+# =================================
+config/credentials.json
+config/token.json
+credentials.json
+token.json
+
+# =================================
+# 💾 DADOS DO USUÁRIO E CACHE
+# =================================
+# Banco de dados com arquivos pessoais
+data/file_index.db
+data/file_index.db-*
+*.db
+*.db-shm
+*.db-wal
+
+# Timestamps e logs pessoais
+data/last_sync.txt
+data/last_local_sync.txt
+last_sync.txt
+last_local_sync.txt
+
+# Cache de thumbnails (pode ser regenerado)
+thumbnail_cache/
+*/thumbnail_cache/
+
+# =================================
+# 🐍 PYTHON E AMBIENTE VIRTUAL  
+# =================================
+# Ambiente virtual
+venv/
+env/
+.env
+.venv
+
+# Cache Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Distribuição / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# =================================
+# 🔧 IDEs E EDITORES
+# =================================
+# VS Code
+.vscode/
+*.code-workspace
+
+# PyCharm
+.idea/
+*.iml
+*.iws
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# =================================
+# 💻 SISTEMA OPERACIONAL
+# =================================
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+*.stackdump
+[Dd]esktop.ini
+$RECYCLE.BIN/
+*.cab
+*.msi
+*.msix
+*.msm
+*.msp
+*.lnk
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+
+# Linux
+*~
+.nfs*
+
+# =================================
+# 📊 LOGS E TEMPORÁRIOS
+# =================================
+*.log
+*.tmp
+*.temp
+temp/
+tmp/
+
+# =================================
+# ⚙️ CONFIGURAÇÕES LOCAIS
+# =================================
+config/settings.json
+settings.json
+local_settings.py
+.env.local
+
+# =================================
+# 🧪 TESTES E DESENVOLVIMENTO
+# =================================
+# Coverage reports
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+*.cover
+.hypothesis/
+.pytest_cache/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# =================================
+# 📦 DEPENDÊNCIAS (usar requirements.txt)
+# =================================
+# pip
+pip-log.txt
+pip-delete-this-directory.txt
+
+# =================================
+# 🎯 ARQUIVOS ESPECÍFICOS DO PROJETO
+# =================================
+# Arquivos de configuração local específicos
+local_config.py
+debug_output.txt
+test_output.txt
+
+# Backup files
+*.bak
+*.backup
+*~
+
+# =================================
+# ✅ O QUE DEVE SER COMMITADO:
+# =================================
+# - src/ (todo código fonte)
+# - docs/ (documentação)
+# - tests/ (testes)
+# - scripts/ (scripts utilitários)
+# - tools/ (ferramentas)
+# - assets/ (recursos pequenos)
+# - app.py (ponto de entrada)
+# - requirements.txt (dependências)
+# - README.md (documentação principal)
+# - .gitignore (este arquivo)
+# - analyze_code.py (script de análise)
