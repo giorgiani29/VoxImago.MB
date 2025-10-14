@@ -1,0 +1,28 @@
+# requirements-optional.txt
+# Dependências opcionais para desenvolvimento, testes, lint, formatação, tipagem e notebooks
+
+# Testes
+pytest>=7.0
+pytest-cov>=4.0
+
+# Profiling e análise de desempenho
+memory_profiler>=0.61
+snakeviz>=2.1
+
+# Shell interativo
+ipython>=8.0
+
+# Lint e análise estática
+flake8>=6.0
+pylint>=3.0
+mypy>=1.0
+
+# Formatação automática
+black>=24.0
+
+# Pre-commit hooks
+pre-commit>=3.0
+
+# Notebooks interativos
+notebook>=7.0
+jupyterlab>=4.0
