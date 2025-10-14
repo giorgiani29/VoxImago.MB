@@ -1152,7 +1152,7 @@ class DriveFileGalleryApp(QMainWindow):
 
         self.local_scan_thread = QThread()
         self.local_scan_worker = LocalScanWorker(
-            db_name=self.indexer.db_name, scan_path=paths_to_scan, force_sync=True)
+            db_name=self.indexer.db_name, scan_path=paths_to_scan, force_sync=False)
         self.local_scan_worker.moveToThread(self.local_scan_thread)
 
         self.local_scan_worker.finished.connect(self.on_local_scan_finished)
@@ -1426,7 +1426,7 @@ class DriveFileGalleryApp(QMainWindow):
 
             self.drive_sync_thread = QThread()
             self.drive_sync_worker = DriveSyncWorker(
-                self.service, db_name=self.indexer.db_name, force_sync=True, selected_folders=selected_folders)
+                self.service, db_name=self.indexer.db_name, force_sync=False, selected_folders=selected_folders)
             self.drive_sync_worker.moveToThread(self.drive_sync_thread)
 
             self.drive_sync_worker.progress_update.connect(
@@ -1453,7 +1453,7 @@ class DriveFileGalleryApp(QMainWindow):
 
             self.drive_sync_thread = QThread()
             self.drive_sync_worker = DriveSyncWorker(
-                self.service, db_name=self.indexer.db_name, force_sync=True, selected_folders=selected_folders)
+                self.service, db_name=self.indexer.db_name, force_sync=False, selected_folders=selected_folders)
             self.drive_sync_worker.moveToThread(self.drive_sync_thread)
 
             self.drive_sync_worker.sync_finished.connect(

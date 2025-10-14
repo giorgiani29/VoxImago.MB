@@ -324,30 +324,32 @@
 
 ---
 
+
 ## Notas de verificação (estado anterior):
 
-- Sincronização incremental dos metadados: DriveSync busca a lista completa e faz upsert; não há filtro por `modifiedTime`/delta. LocalScan revarre diretórios. Falta implementar delta por data/hash e paginação de API do Drive com cutoff por alteração.
-- Busca avançada por metadados do Drive nos arquivos locais: Existe FTS5 e busca unificada, mas não há vinculação robusta de metadados do Drive ao arquivo local equivalente. O “Explorer Especial” restringe a resultados locais, porém sem mesclar descrições do Drive.
+- Sincronização incremental dos metadados: Já implementada para Drive (filtro por `modifiedTime` na query da API) e para Local (apenas arquivos modificados após o último sync são processados). O sistema evita reprocessamento desnecessário e utiliza arquivos de controle de timestamp.
+- Busca avançada por metadados do Drive nos arquivos locais: Existe FTS5 e busca unificada, com vinculação de metadados do Drive ao arquivo local equivalente. O “Explorer Especial” restringe a resultados locais, mas já permite mesclar descrições do Drive quando há correspondência.
 - Explorer Especial: Implementado como modo de visualização local (filtro `source='local'`) e opção na UI.
-- Notificações e logs: Há mensagens na status bar, notificações via `QSystemTrayIcon` e logs detalhados de geração de miniaturas. Ainda não há um logger central ou níveis (INFO/WARN/ERROR) configuráveis.
-- Filtros avançados: Implementados (extensão, datas de criação/modificação, favoritos). Persistência básica via `settings.json`.
+- Notificações e logs: Mensagens na status bar, notificações via `QSystemTrayIcon` e logs detalhados de geração de miniaturas. Logger central e níveis configuráveis (INFO/WARN/ERROR) ainda são oportunidades de melhoria.
+- Filtros avançados: Implementados (extensão, datas de criação/modificação, favoritos). Persistência via `settings.json`.
 
 ---
 
 ## **🔍 ANÁLISE TÉCNICA DETALHADA - ESTADO ATUAL (Out 2025)**
 
+
 ### **⚡ Performance Bottlenecks Identificados**
-- **Sincronização incremental**: DriveSync faz lista completa sem filtro `modifiedTime`/delta
-- **LocalScan**: Re-scanneia diretórios completos (não incremental) 
+- **Sincronização incremental**: Já implementada para Drive e Local, mas pode ser otimizada para grandes volumes (500K+ arquivos).
 - **FTS5 queries**: Sem análise de query plans otimizados
 - **Memory usage**: Não há profiling de vazamentos/picos
 - **UI blocking**: Threads podem bloquear interface em operações longas
 
+
 ### **🔄 Fusion System - Gaps Técnicos**
-- **Vinculação Drive↔Local**: Existe mas não é robusta para todos cenários
-- **Metadados Drive**: Não são completamente mesclados nos resultados locais
-- **Explorer Especial**: Filtra por `source='local'` mas sem descriptions Drive
-- **Path matching**: Algoritmo pode falhar com caracteres especiais/casing
+- **Vinculação Drive↔Local**: Implementada, mas pode ser aprimorada para cenários complexos (nomes semelhantes, paths com caracteres especiais).
+- **Metadados Drive**: Mesclados nos resultados locais quando há correspondência; aprimoramentos futuros podem aumentar a robustez.
+- **Explorer Especial**: Filtra por `source='local'` e já permite exibir descrições do Drive quando há match.
+- **Path matching**: Algoritmo pode ser aprimorado para casos extremos de nomes/paths.
 
 ### **📊 Logging e Monitoring - Lacunas**
 - **Logger central**: Não implementado (usa prints/status bar)

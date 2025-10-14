@@ -84,7 +84,8 @@ class AuthWorker(QObject):
         try:
             flow = InstalledAppFlow.from_client_secrets_file(
                 CREDENTIALS_FILE, SCOPES)
-            creds = flow.run_local_server(port=0)
+            creds = flow.run_local_server(
+                port=0, access_type='offline', prompt='consent')
 
             with open(TOKEN_FILE, 'w') as token:
                 token.write(creds.to_json())
@@ -212,7 +213,6 @@ class LocalScanWorker(QObject):
         conn = open_db_for_thread(self.db_name)
         cursor = conn.cursor()
 
-        # Criar tabelas se não existirem
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS files (
                 file_id TEXT PRIMARY KEY,
@@ -277,7 +277,6 @@ class LocalScanWorker(QObject):
             for root, dirs, files in os.walk(scan_path):
                 if not self.is_running:
                     break
-                # Skip until resume point
                 if last_root and not resumed:
                     if root < last_root:
                         continue
@@ -287,7 +286,6 @@ class LocalScanWorker(QObject):
                     else:
                         resumed = True
 
-                # Save progress
                 self.save_resume_point(root)
                 for name in dirs:
                     dir_path = os.path.join(root, name)
@@ -671,11 +669,25 @@ class DriveSyncWorker(QObject):
             total_drive = len(processed_items)
             drive_with_size = 0
             match_count = 0
-            for drive_item in processed_items:
+
+            fusion_start = time.time()
+            print("🔄 Iniciando processo de fusão de metadados...")
+
+            for i, drive_item in enumerate(processed_items):
                 if drive_item['size'] > 0:
                     drive_with_size += 1
 
+                if i % 100 == 0:
+                    print(
+                        f"Fusão: {i}/{len(processed_items)} arquivos processados")
+
+                match_start = time.time()
                 matches = find_local_matches(drive_item, indexer.cursor)
+                match_time = time.time() - match_start
+                if i % 100 == 0:
+                    print(
+                        f"Tempo para matching do arquivo {i}: {match_time:.4f} segundos")
+
                 local_rows = [(match,) for match in matches] if matches else []
 
                 if matches and drive_item['size'] > 0:
@@ -696,24 +708,45 @@ class DriveSyncWorker(QObject):
                         )
                         fusion_count += 1
                         match_count += 1
-                        if fusion_count % 100 == 0:
-                            print(f"Fusionados até agora: {fusion_count}")
+                        if fusion_count % 500 == 0:
+                            print(
+                                f"[LOG] Fusionados até agora: {fusion_count}")
                     matched_drive_ids.append(drive_item['id'])
                 elif drive_item['size'] > 0:
                     no_match_count = drive_with_size - match_count
                     if no_match_count <= 5:
                         print(
                             f"DEBUG: No match for Drive file: {drive_item['name']} size: {drive_item['size']}")
+
             print(
-                f"Total Drive files: {total_drive}, with size >0: {drive_with_size}, matches: {match_count}")
-            print(f"Total fusionados: {fusion_count}")
+                f"[LOG] Total Drive files: {total_drive}, with size >0: {drive_with_size}, matches: {match_count}")
+            print(f"[LOG] Total fusionados: {fusion_count}")
+
+            def delete_in_batches(cursor, table, id_list, batch_size=500):
+                print(
+                    f"[LOG] Iniciando deletes em lote na tabela '{table}' ({len(id_list)} IDs, batch_size={batch_size})")
+                for i in range(0, len(id_list), batch_size):
+                    batch = id_list[i:i+batch_size]
+                    print(
+                        f"[LOG] Deletando batch {i//batch_size+1}: {len(batch)} IDs na tabela '{table}'...")
+                    placeholders = ','.join('?' for _ in batch)
+                    sql = f"DELETE FROM {table} WHERE file_id IN ({placeholders})"
+                    cursor.execute(sql, batch)
+                print(f"[LOG] Deletes em lote finalizados na tabela '{table}'")
+
             if matched_drive_ids:
-                placeholders = ','.join('?' for _ in matched_drive_ids)
-                indexer.cursor.execute(
-                    f"DELETE FROM files WHERE file_id IN ({placeholders})", matched_drive_ids)
-                indexer.cursor.execute(
-                    f"DELETE FROM search_index WHERE file_id IN ({placeholders})", matched_drive_ids)
-                indexer.conn.commit()
+                print(f"[LOG] Iniciando deletes em lote para arquivos fusionados...")
+                delete_in_batches(indexer.cursor, 'files', matched_drive_ids)
+                delete_in_batches(
+                    indexer.cursor, 'search_index', matched_drive_ids)
+                print(f"[LOG] Deletes em lote concluídos.")
+
+            print("[LOG] Commitando alterações no banco de dados...")
+            indexer.conn.commit()
+            print("[LOG] Commit concluído.")
+            fusion_end = time.time()
+            print(
+                f"Fusão concluída em {fusion_end - fusion_start:.2f} segundos")
 
             conn.close()
             self.update_status.emit(
