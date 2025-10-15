@@ -29,6 +29,9 @@ last_local_sync.txt
 thumbnail_cache/
 */thumbnail_cache/
 
+# Ignorar backups de dados
+/data(backup)/
+
 # =================================
 # 🐍 PYTHON E AMBIENTE VIRTUAL  
 # =================================
