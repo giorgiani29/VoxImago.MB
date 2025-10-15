@@ -3,9 +3,9 @@
 # Planejamento Semanal (15 a 18 de Outubro de 2025)
 
 ## Quarta-feira (15/10)
-- [ ] Revisar e organizar logs detalhados do processo de fusão e sincronização.
-- [ ] Adicionar/improvar prints/logs para início/fim da fusão, progresso em lotes, deletes em lote e commits.
-- [ ] Validar se o feedback ao usuário está claro durante operações longas.
+- [x] Revisar e organizar logs detalhados do processo de fusão e sincronização.
+- [x] Adicionar/improvar prints/logs para início/fim da fusão, progresso em lotes, deletes em lote e commits.
+- [x] Validar se o feedback ao usuário está claro durante operações longas.
 
 ## Quinta-feira (16/10)
 - [ ] Refatorar o loop de fusão para usar updates em lote (`executemany`) se possível.

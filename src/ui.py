@@ -1430,6 +1430,10 @@ class DriveFileGalleryApp(QMainWindow):
             self.drive_sync_worker.moveToThread(self.drive_sync_thread)
 
             self.drive_sync_worker.progress_update.connect(
+                self.update_drive_sync_progress)
+            self.drive_sync_worker.update_status.connect(
+                self.update_drive_status_message)
+            self.drive_sync_worker.progress_update.connect(
                 lambda value, msg: (progress.setValue(value), progress.setLabelText(msg)))
             self.drive_sync_worker.sync_finished.connect(
                 lambda: progress.close())
@@ -1521,6 +1525,9 @@ class DriveFileGalleryApp(QMainWindow):
         self.status_bar.showMessage(msg)
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(value)
+
+    def update_drive_status_message(self, msg):
+        self.status_bar.showMessage(msg)
 
     def clear_display(self):
         self.all_loaded_label.hide()

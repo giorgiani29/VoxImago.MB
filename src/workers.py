@@ -3,12 +3,6 @@
 # Use este arquivo para executar tarefas paralelas e assíncronas no aplicativo.
 
 import sys
-from .utils import load_settings, save_settings
-from datetime import datetime, timezone
-from .database import open_db_for_thread, remove_accents, normalize_text
-from .utils import get_thumbnail_cache_key
-from googleapiclient.http import MediaIoBaseDownload
-from googleapiclient.discovery import build
 import time
 import sqlite3
 import requests
@@ -16,8 +10,15 @@ import os
 import io
 import uuid
 import mimetypes
-from PyQt6.QtCore import QObject, pyqtSignal
 import os
+import logging
+from .utils import load_settings, save_settings
+from datetime import datetime, timezone
+from .database import open_db_for_thread, remove_accents, normalize_text
+from .utils import get_thumbnail_cache_key
+from googleapiclient.http import MediaIoBaseDownload
+from googleapiclient.discovery import build
+from PyQt6.QtCore import QObject, pyqtSignal, QCoreApplication
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from .utils import find_local_matches
@@ -25,6 +26,14 @@ from .utils import find_local_matches
 SCOPES = ['https://www.googleapis.com/auth/drive.readonly']
 TOKEN_FILE = 'token.json'
 CREDENTIALS_FILE = 'credentials.json'
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='[%(asctime)s] %(levelname)s: %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S',
+    filename='app.log',
+    filemode='a'
+)
 
 
 def _check_initial_auth(self):
@@ -140,7 +149,8 @@ class DownloadWorker(QObject):
         os.makedirs(self.temp_dir, exist_ok=True)
 
     def run(self):
-        print("DownloadWorker iniciado para:", self.file_item.get('name'))
+        logging.info("DownloadWorker iniciado para: %s",
+                     self.file_item.get('name'))
         file_id = self.file_item.get('id')
         file_name = self.file_item.get('name')
         mime_type = self.file_item.get('mimeType')
@@ -171,7 +181,7 @@ class DownloadWorker(QObject):
                     if status:
                         pass
         except Exception as e:
-            print(f"Erro no download: {e}")
+            logging.error("Erro no download: %s", e)
         finally:
             pass
 
@@ -195,20 +205,19 @@ class LocalScanWorker(QObject):
         self.conn = sqlite3.connect(self.db_name, timeout=30.0)
 
     def run(self):
-        import os
-        print(f"DEBUG: scan_path = {self.scan_path}")
+        logging.debug(f"scan_path = {self.scan_path}")
         self.update_status_signal.emit("Escaneando arquivos locais...")
         last_sync_time = self.get_last_sync_time()
         try:
             last_sync_datetime = datetime.fromisoformat(
                 last_sync_time[:-1] + '+00:00')
         except ValueError:
-            print(
+            logging.error(
                 f"Erro: last_sync_time '{last_sync_time}' não está no formato esperado.")
             last_sync_datetime = datetime(1970, 1, 1, tzinfo=timezone.utc)
 
         last_root = self.load_resume_point()
-        print(f"DEBUG: last_root = {last_root}")
+        logging.debug(f"last_root = {last_root}")
 
         conn = open_db_for_thread(self.db_name)
         cursor = conn.cursor()
@@ -271,7 +280,7 @@ class LocalScanWorker(QObject):
         resumed = False
         total_processed = 0
         for scan_path in self.scan_path:
-            print(f"DEBUG: Processing scan_path: {scan_path}")
+            logging.debug(f"Processing scan_path: {scan_path}")
             if not self.is_running:
                 break
             for root, dirs, files in os.walk(scan_path):
@@ -282,7 +291,7 @@ class LocalScanWorker(QObject):
                         continue
                     elif root == last_root:
                         resumed = True
-                        print(f"🔄 Retomando escaneamento de: {root}")
+                        logging.info(f"🔄 Retomando escaneamento de: {root}")
                     else:
                         resumed = True
 
@@ -295,7 +304,7 @@ class LocalScanWorker(QObject):
                         modified = int(os.path.getmtime(dir_path))
                         created = int(os.path.getctime(dir_path))
                         if modified < 0:
-                            print(
+                            logging.warning(
                                 f"Aviso: Tempo de modificação negativo para {dir_path}")
                             continue
                         if not self.force_sync and isinstance(modified, (int, float)) and last_sync_datetime:
@@ -360,8 +369,8 @@ class LocalScanWorker(QObject):
                         batch_search.clear()
                         self.total_processed += 100
                         self.progress_update.emit(self.total_processed)
-                        print(
-                            f"DEBUG: Processed batch of 100 dirs, total_processed now: {total_processed}")
+                        logging.debug(
+                            f"Processed batch of 100 dirs, total_processed now: {total_processed}")
                 for name in files:
                     if not self.is_running:
                         break
@@ -375,15 +384,15 @@ class LocalScanWorker(QObject):
                         modified = int(os.path.getmtime(file_path))
                         created = int(os.path.getctime(file_path))
                         if modified < 0:
-                            print(
-                                f"Aviso: Tempo de modificação negativo para {file_path}")
+                            logging.warning(
+                                "Aviso: Tempo de modificação negativo para %s", file_path)
                             continue
                         if not self.force_sync and isinstance(modified, (int, float)) and last_sync_datetime:
                             if modified < last_sync_datetime.timestamp():
                                 continue
                     except (OSError, FileNotFoundError):
-                        print(
-                            f"Erro ao acessar {file_path}: {sys.exc_info()[1]}")
+                        logging.error("Erro ao acessar %s: %s",
+                                      file_path, sys.exc_info()[1])
                         continue
                     file_item = {
                         'id': file_path,
@@ -459,8 +468,8 @@ class LocalScanWorker(QObject):
                         raise
             self.total_processed += len(batch_files)
             self.progress_update.emit(self.total_processed)
-        print(
-            f"DEBUG: Scan completed. Total items processed: {total_processed}")
+        logging.info(
+            f"Scan completed. Total items processed: {total_processed}")
         conn.close()
         self.finished.emit()
         self.update_last_sync_time()
@@ -486,7 +495,8 @@ class LocalScanWorker(QObject):
 
     def get_last_sync_time(self):
         if self.force_sync:
-            print("🔄 Sincronização FORÇADA - ignorando cache de timestamp")
+            logging.info(
+                "🔄 Sincronização FORÇADA - ignorando cache de timestamp")
             return '1970-01-01T00:00:00.000Z'
 
         try:
@@ -523,12 +533,14 @@ class DriveSyncWorker(QObject):
 
     def run(self):
         sync_type = "FORÇADA" if self.force_sync else "incremental"
-        print(f"🔄 DriveSyncWorker.run() iniciado - Sincronização {sync_type}")
+        logging.info(
+            f"🔄 DriveSyncWorker.run() iniciado - Sincronização {sync_type}")
         status_msg = "Sincronização COMPLETA do Drive..." if self.force_sync else "Sincronizando arquivos e pastas do Drive..."
         self.update_status.emit(status_msg)
+        self.progress_update.emit(0, status_msg)
         try:
             last_sync_time = self.get_last_sync_time()
-            print(f"📅 last_sync_time: {last_sync_time}")
+            logging.info(f"📅 last_sync_time: {last_sync_time}")
 
             results = []
             page_token = None
@@ -541,15 +553,17 @@ class DriveSyncWorker(QObject):
                 if folder_id.startswith('0') and len(folder_id) > 10:
                     is_shared_drive_sync = True
                     shared_drive_id = folder_id
-                    print(f"🏢 Detectado Shared Drive raiz: {shared_drive_id}")
+                    logging.info(
+                        f"🏢 Detectado Shared Drive raiz: {shared_drive_id}")
 
             if is_shared_drive_sync:
                 base_q = "trashed = false"
                 if last_sync_time != '1970-01-01T00:00:00.000Z':
                     base_q += f" and modifiedTime > '{last_sync_time}'"
 
-                print(f"🔍 Query da API (Shared Drive): {base_q}")
-                print(f"🏢 Usando corpora='drive', driveId='{shared_drive_id}'")
+                logging.info(f"🔍 Query da API (Shared Drive): {base_q}")
+                logging.info(
+                    f"🏢 Usando corpora='drive', driveId='{shared_drive_id}'")
 
             else:
                 base_q = "(trashed = false) or (sharedWithMe = true and trashed = false)"
@@ -563,32 +577,32 @@ class DriveSyncWorker(QObject):
                             conditions.append(f"'{folder_id}' in parents")
 
                     base_q += f" and ({' or '.join(conditions)})"
-                    print(
+                    logging.info(
                         f"📁 Filtrando por pastas específicas: {self.selected_folders}")
 
                 if last_sync_time != '1970-01-01T00:00:00.000Z':
                     base_q += f" and modifiedTime > '{last_sync_time}'"
-                print(f"🔍 Query da API: {base_q}")
-            print(f"🔐 Service disponível: {self.service is not None}")
+                logging.info(f"🔍 Query da API: {base_q}")
+            logging.info(f"🔐 Service disponível: {self.service is not None}")
 
             try:
                 test_response = self.service.files().list(
                     q="trashed = false", pageSize=1).execute()
                 test_files = test_response.get('files', [])
-                print(
+                logging.info(
                     f"✅ Teste API: {len(test_files)} arquivo(s) encontrado(s)")
                 if test_files:
-                    print(
+                    logging.info(
                         f"   Exemplo: {test_files[0].get('name', 'sem nome')}")
             except Exception as test_e:
-                print(f"❌ Erro no teste da API: {test_e}")
+                logging.error(f"❌ Erro no teste da API: {test_e}")
                 raise test_e
-            print("🔄 Iniciando loop de busca de arquivos...")
+            logging.info("🔄 Iniciando loop de busca de arquivos...")
             page_count = 0
             self.progress_update.emit(0, "Buscando arquivos do Drive...")
             while self.is_running:
                 page_count += 1
-                print(
+                logging.info(
                     f"🔄 Buscando página {page_count}, page_token: {page_token}")
 
                 if is_shared_drive_sync:
@@ -612,14 +626,20 @@ class DriveSyncWorker(QObject):
                         supportsAllDrives=True
                     ).execute()
                 files = response.get('files', [])
-                print(f"📄 Recebidos {len(files)} arquivos nesta página")
+                logging.info(f"📄 Recebidos {len(files)} arquivos nesta página")
                 results.extend(files)
                 page_token = response.get('nextPageToken', None)
-                print(f"📄 Próximo page_token: {page_token}")
+                logging.info(f"📄 Próximo page_token: {page_token}")
+                self.update_status.emit(
+                    f"Buscando arquivos... página {page_count} (recebidos {len(files)})")
                 self.progress_update.emit(
-                    0, f"Buscando arquivos... página {page_count}")
+                    0, f"Buscando arquivos... página {page_count} (recebidos {len(files)})")
                 if not page_token:
-                    print("🔚 Fim das páginas")
+                    logging.info("🔚 Fim das páginas")
+                    self.update_status.emit(
+                        f"Busca finalizada. Total de arquivos recebidos: {len(results)}")
+                    self.progress_update.emit(
+                        0, f"Busca finalizada. Total de arquivos recebidos: {len(results)}")
                     break
 
             self.update_last_sync_time()
@@ -628,12 +648,22 @@ class DriveSyncWorker(QObject):
                 return
 
             total_files = len(results)
-            processed_items = []
+            self.update_status.emit(
+                f"Processando e salvando {total_files} arquivos do Drive em lotes...")
             self.progress_update.emit(
-                0, f"Processando {total_files} arquivos...")
+                0, f"Iniciando processamento em lotes...")
+
+            conn = open_db_for_thread(self.db_name)
+            from .database import FileIndexer
+            indexer = FileIndexer(self.db_name)
+
+            processed_items = []
+            batch_to_save = []
             for i, file in enumerate(results):
                 if not self.is_running:
+                    conn.close()
                     return
+
                 item = {
                     'id': file.get('id'),
                     'name': file.get('name'),
@@ -650,18 +680,24 @@ class DriveSyncWorker(QObject):
                     'webContentLink': file.get('webViewLink', ''),
                 }
                 processed_items.append(item)
+                batch_to_save.append(item)
 
-                progress = int((i + 1) / total_files * 100)
-                self.progress_update.emit(
-                    progress, f"Sincronizando {file['name']}...")
+                if len(batch_to_save) >= 1000 or (i + 1) == total_files:
+                    indexer.save_files_in_batch(batch_to_save, source='drive')
+                    progress = int((i + 1) / total_files * 100)
+                    status_msg = f"Salvando no banco: {i+1}/{total_files}"
+
+                    self.update_status.emit(status_msg)
+                    self.progress_update.emit(progress, status_msg)
+                    logging.info(
+                        f"Lote de {len(batch_to_save)} itens salvo no banco. Total processado: {i+1}")
+
+                    batch_to_save.clear()
+                    QCoreApplication.processEvents()
 
             if not self.is_running:
+                conn.close()
                 return
-
-            conn = open_db_for_thread(self.db_name)
-            from .database import FileIndexer
-            indexer = FileIndexer(self.db_name)
-            indexer.save_files_in_batch(processed_items, source='drive')
 
             matched_drive_ids = []
             fusion_count = 0
@@ -671,21 +707,31 @@ class DriveSyncWorker(QObject):
             match_count = 0
 
             fusion_start = time.time()
-            print("🔄 Iniciando processo de fusão de metadados...")
+            logging.info("🔄 Iniciando processo de fusão de metadados...")
+            self.update_status.emit(f"Iniciando fusão de metadados...")
+            self.progress_update.emit(0, f"Iniciando fusão de metadados...")
 
+            # inicio da fusão de arquivos do drive com os locais
             for i, drive_item in enumerate(processed_items):
                 if drive_item['size'] > 0:
                     drive_with_size += 1
 
                 if i % 100 == 0:
-                    print(
+                    logging.info(
                         f"Fusão: {i}/{len(processed_items)} arquivos processados")
+                    QCoreApplication.processEvents()
+                    self.update_status.emit(
+                        f"Fusão: {i}/{len(processed_items)} arquivos processados")
+                    progress = int((i + 1) / total_drive *
+                                   100) if total_drive else 0
+                    self.progress_update.emit(
+                        progress, f"Fusão: {i}/{total_drive} arquivos processados")
 
                 match_start = time.time()
                 matches = find_local_matches(drive_item, indexer.cursor)
                 match_time = time.time() - match_start
                 if i % 100 == 0:
-                    print(
+                    logging.debug(
                         f"Tempo para matching do arquivo {i}: {match_time:.4f} segundos")
 
                 local_rows = [(match,) for match in matches] if matches else []
@@ -694,7 +740,7 @@ class DriveSyncWorker(QObject):
                     for local_row in local_rows:
                         local_id = local_row[0]
                         if match_count < 5:
-                            print(
+                            logging.debug(
                                 f"DEBUG: Match found for Drive file: {drive_item['name']} size: {drive_item['size']} -> local {local_id}")
                         indexer.cursor.execute(
                             "UPDATE files SET description = ?, thumbnailLink = ?, webContentLink = ? WHERE file_id = ?",
@@ -708,44 +754,52 @@ class DriveSyncWorker(QObject):
                         )
                         fusion_count += 1
                         match_count += 1
-                        if fusion_count % 500 == 0:
-                            print(
+                        if fusion_count % 1000 == 0 and fusion_count > 0:
+                            indexer.conn.commit()
+                            logging.info(
                                 f"[LOG] Fusionados até agora: {fusion_count}")
                     matched_drive_ids.append(drive_item['id'])
                 elif drive_item['size'] > 0:
                     no_match_count = drive_with_size - match_count
                     if no_match_count <= 5:
-                        print(
+                        logging.debug(
                             f"DEBUG: No match for Drive file: {drive_item['name']} size: {drive_item['size']}")
 
-            print(
+            logging.info(
                 f"[LOG] Total Drive files: {total_drive}, with size >0: {drive_with_size}, matches: {match_count}")
-            print(f"[LOG] Total fusionados: {fusion_count}")
+            logging.info(f"[LOG] Total fusionados: {fusion_count}")
+            # fim da fusão de arquivos do drive com os locais
+            self.update_status.emit(
+                f"Fusão concluída. Total fusionados: {fusion_count}")
+            self.progress_update.emit(
+                100, f"Fusão concluída. Total fusionados: {fusion_count}")
 
             def delete_in_batches(cursor, table, id_list, batch_size=500):
-                print(
+                logging.info(
                     f"[LOG] Iniciando deletes em lote na tabela '{table}' ({len(id_list)} IDs, batch_size={batch_size})")
                 for i in range(0, len(id_list), batch_size):
                     batch = id_list[i:i+batch_size]
-                    print(
+                    logging.info(
                         f"[LOG] Deletando batch {i//batch_size+1}: {len(batch)} IDs na tabela '{table}'...")
                     placeholders = ','.join('?' for _ in batch)
                     sql = f"DELETE FROM {table} WHERE file_id IN ({placeholders})"
                     cursor.execute(sql, batch)
-                print(f"[LOG] Deletes em lote finalizados na tabela '{table}'")
+                logging.info(
+                    f"[LOG] Deletes em lote finalizados na tabela '{table}'")
 
             if matched_drive_ids:
-                print(f"[LOG] Iniciando deletes em lote para arquivos fusionados...")
+                logging.info(
+                    f"[LOG] Iniciando deletes em lote para arquivos fusionados...")
                 delete_in_batches(indexer.cursor, 'files', matched_drive_ids)
                 delete_in_batches(
                     indexer.cursor, 'search_index', matched_drive_ids)
-                print(f"[LOG] Deletes em lote concluídos.")
+                logging.info(f"[LOG] Deletes em lote concluídos.")
 
-            print("[LOG] Commitando alterações no banco de dados...")
+            logging.info("[LOG] Commitando alterações no banco de dados...")
             indexer.conn.commit()
-            print("[LOG] Commit concluído.")
+            logging.info("[LOG] Commit concluído.")
             fusion_end = time.time()
-            print(
+            logging.info(
                 f"Fusão concluída em {fusion_end - fusion_start:.2f} segundos")
 
             conn.close()
@@ -754,11 +808,12 @@ class DriveSyncWorker(QObject):
             self.sync_finished.emit()
         except Exception as e:
             self.sync_failed.emit(f"Erro na sincronização do Drive: {e}")
-            print(f"Erro detalhado: {e}")
+            logging.error(f"Erro detalhado: {e}")
 
     def get_last_sync_time(self):
         if self.force_sync:
-            print("🔄 Sincronização FORÇADA - ignorando cache de timestamp")
+            logging.info(
+                "🔄 Sincronização FORÇADA - ignorando cache de timestamp")
             return '1970-01-01T00:00:00.000Z'
 
         try:
