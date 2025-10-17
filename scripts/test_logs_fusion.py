@@ -5,13 +5,13 @@ Script rápido para testar logs de fusão de metadados
 Executa uma sincronização forçada do Drive para gerar logs
 """
 
-import json
-from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
-from workers import DriveSyncWorker
+from google.oauth2.credentials import Credentials
+import json
+from src.workers import DriveSyncWorker
 import sys
 import os
-sys.path.append('src')
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
 def test_fusion_logs():
@@ -51,6 +51,7 @@ def test_fusion_logs():
 
     try:
         from PyQt6.QtWidgets import QApplication
+        from PyQt6.QtCore import QTimer
         import signal
 
         app = QApplication(sys.argv)
@@ -63,8 +64,19 @@ def test_fusion_logs():
             print(f"❌ Sincronização falhou: {error}")
             app.quit()
 
+        # Timeout de 5 minutos para o teste
+        def on_timeout():
+            print("⏰ Timeout atingido (5 minutos) - forçando término do teste")
+            worker.terminate()
+            app.quit()
+
         worker.sync_finished.connect(on_finished)
         worker.sync_failed.connect(on_failed)
+
+        timer = QTimer()
+        timer.timeout.connect(on_timeout)
+        timer.setSingleShot(True)
+        timer.start(300000)
 
         worker.run()
 

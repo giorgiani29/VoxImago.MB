@@ -1,27 +1,52 @@
-# Planejamento Semanal (15 a 18 de Outubro de 2025)
+# Planejamento Semanal (15 a 21 de Outubro de 2025)
 
-## Quarta-feira (15/10)
-- [x] Revisar e organizar logs detalhados do processo de fusão e sincronização.
-- [x] Adicionar/improvar prints/logs para início/fim da fusão, progresso em lotes, deletes em lote e commits.
-- [x] Validar se o feedback ao usuário está claro durante operações longas.
+## ✅ Concluído (15-16/10)
+- Logs detalhados do processo de fusão e sincronização
+- Prints/logs para início/fim da fusão, progresso em lotes
+- Tentativa de refatoração com `executemany` (não funcionou)
+- Otimização de buscas SQL e índices no banco
+- Benchmark: count_files = 0.10s, load_files_paged = 0.03s
+- Tratamento de exceções nos slots PyQt6
+- Logs de falhas de fusão e conflitos de metadados
+- Padronização de nomes de arquivos de banco nos testes
 
-## Quinta-feira (16/10)
-- [x] Refatorar o loop de fusão para usar updates em lote (`executemany`) se possível.(não funcionou)
-- [x] Reduzir buscas SQL desnecessárias dentro do loop de fusão.
-- [x] Garantir que os campos usados no matching tenham índices no banco.
-- [x] Medir e comparar o tempo de execução antes/depois das mudanças. (Benchmark atual: count_files = 0.10s, load_files_paged = 0.03s)
+---
 
-## Sexta-feira (17/10)
-- [x] Implementar rollback e transações para garantir atomicidade em lotes grandes.
-- [x] Tratar exceções em todos os slots e sinais da interface PyQt6.
-- [x] Adicionar logs de falhas de fusão e conflitos de metadados.
-- [x] Padronizar nomes de arquivos de banco nos testes para evitar sobrescrita.
+## 🔴 HOJE - Quinta-feira (17/10) - CORREÇÃO DO ROLLBACK
+### Prioridade Alta: Corrigir Mecanismo de Rollback
 
-## Segunda-feira (20/10)
-- [ ] Adicionar testes automatizados para o sistema de fusão, simulando cenários de conflito.
-- [ ] Garantir tratamento de exceções em todos os scripts de teste/utilitários.
-- [ ] Revisar dependências do requirements.txt para garantir que todas são usadas.
-- [ ] Expandir a documentação com exemplos de uso avançado e explicação dos critérios de fusão.
+**Problema Identificado:**
+- ✅ Testes executados revelaram falha no rollback de transações
+- ❌ Arquivos permanecem salvos após rollback simulado (esperado: 0, atual: 2)
+- ⚠️ Sistema está salvando dados mesmo após erro/exceção
+
+**Tarefas:**
+- [ ] Investigar implementação atual do rollback em `src/database.py`
+- [ ] Identificar onde as transações estão sendo commitadas indevidamente
+- [ ] Implementar controle de transações adequado:
+  - [ ] `BEGIN TRANSACTION` no início de operações em lote
+  - [ ] `COMMIT` apenas em caso de sucesso completo
+  - [ ] `ROLLBACK` em caso de qualquer exceção
+- [ ] Adicionar context manager para garantir rollback automático
+- [ ] Testar com `test_transaction_rollback.py` até passar 100%
+- [ ] Adicionar testes adicionais para cenários críticos:
+  - [ ] Rollback com múltiplos arquivos
+  - [ ] Rollback durante fusão de metadados
+  - [ ] Rollback em operações de delete em lote
+- [ ] Documentar o mecanismo de transações no código
+- [ ] Atualizar RELATORIO_TESTES.md com correções aplicadas
+
+**Critério de Sucesso:**
+- `test_transaction_rollback.py` deve passar com 0 arquivos após rollback
+- Nenhum dado deve ser persistido em caso de erro durante operações em lote
+
+---
+
+## Segunda-feira (21/10)
+- [ ] Adicionar testes automatizados adicionais para sistema de fusão
+- [ ] Revisar dependências do requirements.txt
+- [ ] Validar integridade de dados após correção do rollback
+- [ ] Executar suite completa de testes e atualizar relatório
 
 ## Para a próxima semana (caso não finalize)
 - [ ] Permitir configuração do critério de matching (nome, tamanho, hash).
@@ -29,4 +54,3 @@
 - [ ] Implementar opção de "dry-run" para simular fusão sem alterar o banco.
 - [ ] Explorar processamento paralelo ou uso de dicionários em memória para matching.
 - [ ] Considerar internacionalização (i18n) se o app for usado por públicos diversos.
-
