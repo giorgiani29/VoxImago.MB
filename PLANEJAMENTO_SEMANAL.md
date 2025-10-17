@@ -1,5 +1,3 @@
-
-
 # Planejamento Semanal (15 a 18 de Outubro de 2025)
 
 ## Quarta-feira (15/10)
@@ -9,9 +7,9 @@
 
 ## Quinta-feira (16/10)
 - [x] Refatorar o loop de fusão para usar updates em lote (`executemany`) se possível.(não funcionou)
-- [ ] Reduzir buscas SQL desnecessárias dentro do loop de fusão.
-- [ ] Garantir que os campos usados no matching tenham índices no banco.
-- [ ] Medir e comparar o tempo de execução antes/depois das mudanças.
+- [x] Reduzir buscas SQL desnecessárias dentro do loop de fusão.
+- [x] Garantir que os campos usados no matching tenham índices no banco.
+- [x] Medir e comparar o tempo de execução antes/depois das mudanças. (Benchmark atual: count_files = 0.10s, load_files_paged = 0.03s)
 
 ## Sexta-feira (17/10)
 - [ ] Implementar rollback e transações para garantir atomicidade em lotes grandes.
