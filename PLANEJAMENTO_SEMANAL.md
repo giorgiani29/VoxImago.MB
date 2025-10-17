@@ -12,8 +12,8 @@
 - [x] Medir e comparar o tempo de execução antes/depois das mudanças. (Benchmark atual: count_files = 0.10s, load_files_paged = 0.03s)
 
 ## Sexta-feira (17/10)
-- [ ] Implementar rollback e transações para garantir atomicidade em lotes grandes.
-- [ ] Tratar exceções em todos os slots e sinais da interface PyQt6.
+- [x] Implementar rollback e transações para garantir atomicidade em lotes grandes.
+- [x] Tratar exceções em todos os slots e sinais da interface PyQt6.
 - [ ] Adicionar logs de falhas de fusão e conflitos de metadados.
 - [ ] Padronizar nomes de arquivos de banco nos testes para evitar sobrescrita.
 

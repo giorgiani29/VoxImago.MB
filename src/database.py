@@ -183,48 +183,54 @@ class FileIndexer:
 
     def save_files_in_batch(self, files_list, source):
         self.ensure_conn()
-        file_ids = [(item.get('id'),) for item in files_list]
-        self.cursor.executemany(
-            "DELETE FROM files WHERE file_id = ?", file_ids)
+        try:
+            self.conn.execute('BEGIN')
+            file_ids = [(item.get('id'),) for item in files_list]
+            self.cursor.executemany(
+                "DELETE FROM files WHERE file_id = ?", file_ids)
 
-        self.cursor.executemany(
-            "DELETE FROM search_index WHERE file_id = ?", file_ids)
+            self.cursor.executemany(
+                "DELETE FROM search_index WHERE file_id = ?", file_ids)
 
-        data_files = [
-            (
-                item.get('id'),
-                item.get('name'),
-                item.get('path'),
-                item.get('mimeType'),
-                item.get('source'),
-                item.get('description'),
-                item.get('thumbnailLink'),
-                item.get('thumbnailPath'),
-                item.get('size', 0),
-                item.get('modifiedTime'),
-                item.get('createdTime'),
-                item.get('parentId'),
-                item.get('webContentLink'),
-                0
-            ) for item in files_list
-        ]
-        self.cursor.executemany(
-            "INSERT OR REPLACE INTO files VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", data_files)
+            data_files = [
+                (
+                    item.get('id'),
+                    item.get('name'),
+                    item.get('path'),
+                    item.get('mimeType'),
+                    item.get('source'),
+                    item.get('description'),
+                    item.get('thumbnailLink'),
+                    item.get('thumbnailPath'),
+                    item.get('size', 0),
+                    item.get('modifiedTime'),
+                    item.get('createdTime'),
+                    item.get('parentId'),
+                    item.get('webContentLink'),
+                    0
+                ) for item in files_list
+            ]
+            self.cursor.executemany(
+                "INSERT OR REPLACE INTO files VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", data_files)
 
-        data_search_index = [
-            (
-                item.get('name', ''),
-                item.get('description', ''),
-                normalize_text(item.get('name', '')),
-                normalize_text(item.get('description', '')),
-                item.get('id'),
-                item.get('source')
-            ) for item in files_list
-        ]
-        self.cursor.executemany(
-            "INSERT OR REPLACE INTO search_index VALUES (?, ?, ?, ?, ?, ?)", data_search_index)
+            data_search_index = [
+                (
+                    item.get('name', ''),
+                    item.get('description', ''),
+                    normalize_text(item.get('name', '')),
+                    normalize_text(item.get('description', '')),
+                    item.get('id'),
+                    item.get('source')
+                ) for item in files_list
+            ]
+            self.cursor.executemany(
+                "INSERT OR REPLACE INTO search_index VALUES (?, ?, ?, ?, ?, ?)", data_search_index)
 
-        self.conn.commit()
+            self.conn.commit()
+        except Exception as e:
+            self.conn.rollback()
+            print(f"Erro ao salvar arquivos em lote: {e}")
+            raise
 
     def clear_cache(self):
         self.ensure_conn()

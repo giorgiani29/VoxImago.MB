@@ -254,105 +254,99 @@ class DriveFileGalleryApp(QMainWindow):
             print(f"⚠️ Erro ao verificar timestamp, fazendo scan: {e}")
             return True
 
+    def close(self):
+        try:
+            super().close()
+        except Exception as e:
+            QMessageBox.critical(
+                self, "Erro", f"Ocorreu um erro ao fechar o aplicativo:\n{e}")
+
+    def show(self):
+        try:
+            super().show()
+        except Exception as e:
+            QMessageBox.critical(
+                self, "Erro", f"Ocorreu um erro ao exibir a janela:\n{e}")
+
     def closeEvent(self, event):
-        threads_to_wait = []
-        if hasattr(self, 'auth_thread') and self.auth_thread and self.auth_thread.isRunning():
-            self.auth_thread.quit()
-            threads_to_wait.append(self.auth_thread)
-        if hasattr(self, 'drive_sync_thread') and self.drive_sync_thread and self.drive_sync_thread.isRunning():
-            self.drive_sync_thread.quit()
-            threads_to_wait.append(self.drive_sync_thread)
-        if hasattr(self, 'local_scan_thread') and self.local_scan_thread and self.local_scan_thread.isRunning():
-            self.local_scan_thread.quit()
-            threads_to_wait.append(self.local_scan_thread)
+        try:
+            if hasattr(self, 'indexer') and self.indexer.conn:
+                self.indexer.conn.close()
 
-        for thread in threads_to_wait:
-            if not thread.wait(5000):
-                print(
-                    f"Aviso: Thread {thread.objectName()} não terminou no tempo esperado.")
+            if hasattr(self, 'tray_icon'):
+                self.tray_icon.hide()
 
-        if hasattr(self, 'auth_worker') and self.auth_worker:
-            self.auth_worker.deleteLater()
-        if hasattr(self, 'drive_sync_worker') and self.drive_sync_worker:
-            self.drive_sync_worker.deleteLater()
-        if hasattr(self, 'local_scan_worker') and self.local_scan_worker:
-            self.local_scan_worker.deleteLater()
-
-        if hasattr(self.details_panel, 'thumbnail_thread') and self.details_panel.thumbnail_thread:
-            if self.details_panel.thumbnail_thread.isRunning():
-                self.details_panel.thumbnail_thread.quit()
-                if not self.details_panel.thumbnail_thread.wait(3000):
-                    print("Aviso: Thumbnail thread do painel não terminou.")
-            self.details_panel.thumbnail_thread.deleteLater()
-        if hasattr(self.details_panel, 'thumbnail_worker') and self.details_panel.thumbnail_worker:
-            self.details_panel.thumbnail_worker.deleteLater()
-
-        if hasattr(self, 'indexer') and self.indexer.conn:
-            self.indexer.conn.close()
-
-        if hasattr(self, 'tray_icon'):
-            self.tray_icon.hide()
-
-        event.accept()
+            event.accept()
+        except Exception as e:
+            QMessageBox.critical(
+                self, "Erro", f"Ocorreu um erro ao finalizar o aplicativo:\n{e}")
 
     def on_tray_icon_activated(self, reason):
-        if reason == QSystemTrayIcon.ActivationReason.DoubleClick:
-            if self.isMinimized() or not self.isVisible():
-                self.showNormal()
-                self.raise_()
-                self.activateWindow()
-            else:
-                self.showMinimized()
+        try:
+            if reason == QSystemTrayIcon.ActivationReason.DoubleClick:
+                if self.isMinimized() or not self.isVisible():
+                    self.showNormal()
+                    self.raise_()
+                    self.activateWindow()
+                else:
+                    self.showMinimized()
+        except Exception as e:
+            QMessageBox.critical(
+                self, "Erro", f"Ocorreu um erro ao ativar o ícone da bandeja:\n{e}")
 
     def show_service_status(self):
-        status_lines = []
+        try:
+            status_lines = []
 
-        if self.is_authenticated:
-            status_lines.append("✓ Autenticado no Google Drive")
-        else:
-            status_lines.append("✗ Não autenticado no Google Drive")
+            if self.is_authenticated:
+                status_lines.append("✓ Autenticado no Google Drive")
+            else:
+                status_lines.append("✗ Não autenticado no Google Drive")
 
-        if self.local_scan_thread and self.local_scan_thread.isRunning():
-            status_lines.append("⟳ Escaneamento local em andamento...")
-        else:
-            try:
-                local_count = self.indexer.get_file_count(source='local')
-                status_lines.append(
-                    f"✓ Arquivos locais indexados: {local_count}")
-            except:
-                status_lines.append("✗ Erro ao acessar arquivos locais")
+            if self.local_scan_thread and self.local_scan_thread.isRunning():
+                status_lines.append("⟳ Escaneamento local em andamento...")
+            else:
+                try:
+                    local_count = self.indexer.get_file_count(source='local')
+                    status_lines.append(
+                        f"✓ Arquivos locais indexados: {local_count}")
+                except:
+                    status_lines.append("✗ Erro ao acessar arquivos locais")
 
-        if self.drive_sync_thread and self.drive_sync_thread.isRunning():
-            status_lines.append("⟳ Sincronização do Drive em andamento...")
-        else:
-            try:
-                drive_count = self.indexer.get_file_count(source='drive')
-                status_lines.append(
-                    f"✓ Arquivos do Drive indexados: {drive_count}")
-            except:
-                status_lines.append("✗ Erro ao acessar arquivos do Drive")
+            if self.drive_sync_thread and self.drive_sync_thread.isRunning():
+                status_lines.append("⟳ Sincronização do Drive em andamento...")
+            else:
+                try:
+                    drive_count = self.indexer.get_file_count(source='drive')
+                    status_lines.append(
+                        f"✓ Arquivos do Drive indexados: {drive_count}")
+                except:
+                    status_lines.append("✗ Erro ao acessar arquivos do Drive")
 
-        if self.is_loading:
-            status_lines.append("⟳ Carregando arquivos...")
+            if self.is_loading:
+                status_lines.append("⟳ Carregando arquivos...")
 
-        if self.current_view == 'local':
-            status_lines.append("👁️ Visualizando: Arquivos Locais")
-        elif self.current_view == 'drive':
-            status_lines.append("👁️ Visualizando: Google Drive")
-        else:
-            status_lines.append("👁️ Visualizando: Unificado")
+            if self.current_view == 'local':
+                status_lines.append("👁️ Visualizando: Arquivos Locais")
+            elif self.current_view == 'drive':
+                status_lines.append("👁️ Visualizando: Google Drive")
+            else:
+                status_lines.append("👁️ Visualizando: Unificado")
 
-        if self.search_term:
-            status_lines.append(f"🔍 Pesquisa ativa: '{self.search_term}'")
+            if self.search_term:
+                status_lines.append(f"🔍 Pesquisa ativa: '{self.search_term}'")
 
-        if self.explorer_special_active:
-            status_lines.append("🏠 Modo Explorer Local ativo")
+            if self.explorer_special_active:
+                status_lines.append("🏠 Modo Explorer Local ativo")
 
-        status_text = "\n".join(status_lines)
-        show_progress = (self.local_scan_thread and self.local_scan_thread.isRunning()) or (
-            self.drive_sync_thread and self.drive_sync_thread.isRunning())
-        dialog = ServiceStatusDialog(status_text, show_progress, self)
-        dialog.exec()
+            status_text = "\n".join(status_lines)
+            show_progress = (self.local_scan_thread and self.local_scan_thread.isRunning()) or (
+                self.drive_sync_thread and self.drive_sync_thread.isRunning())
+            dialog = ServiceStatusDialog(status_text, show_progress, self)
+            dialog.exec()
+        except Exception as e:
+            QMessageBox.critical(
+                self, "Erro", f"Ocorreu um erro ao exibir o status dos serviços:\n{e}")
 
     def _check_token_refresh(self):
         if not self.is_authenticated:
@@ -1060,36 +1054,44 @@ class DriveFileGalleryApp(QMainWindow):
         self.update_filter_buttons()
 
     def update_search_suggestions(self):
-        text = self.search_entry.text().strip()
-        if not text:
-            self.completer_model.setStringList([])
-            return
+        try:
+            text = self.search_entry.text().strip()
+            if not text:
+                self.completer_model.setStringList([])
+                return
 
-        suggestions = self.indexer.get_search_suggestions(
-            text, self.is_authenticated)
+            suggestions = self.indexer.get_search_suggestions(
+                text, self.is_authenticated)
 
-        normalized_text = normalize_text(text)
-        if normalized_text != text.lower():
-            normalized_suggestions = self.indexer.get_search_suggestions(
-                normalized_text, self.is_authenticated)
-            suggestions = list(set(suggestions + normalized_suggestions))
+            normalized_text = normalize_text(text)
+            if normalized_text != text.lower():
+                normalized_suggestions = self.indexer.get_search_suggestions(
+                    normalized_text, self.is_authenticated)
+                suggestions = list(set(suggestions + normalized_suggestions))
 
-        self.completer_model.setStringList(suggestions[:10])
+            self.completer_model.setStringList(suggestions[:10])
+        except Exception as e:
+            QMessageBox.critical(
+                self, "Erro", f"Ocorreu um erro ao atualizar sugestões de busca:\n{e}")
 
     def handle_search_request(self):
-        original_term = self.search_entry.text().strip()
-        self.search_term = original_term.lower()
+        try:
+            original_term = self.search_entry.text().strip()
+            self.search_term = original_term.lower()
 
-        if self.search_term:
-            normalized_term = normalize_text(self.search_term)
-            print(
-                f"🔍 Busca: '{original_term}' → Normalizado: '{normalized_term}'")
+            if self.search_term:
+                normalized_term = normalize_text(self.search_term)
+                print(
+                    f"🔍 Busca: '{original_term}' → Normalizado: '{normalized_term}'")
 
-        self.current_page = 0
-        self.all_files_loaded = False
-        self.current_folder_id = None
-        self.clear_display()
-        self.load_next_batch()
+            self.current_page = 0
+            self.all_files_loaded = False
+            self.current_folder_id = None
+            self.clear_display()
+            self.load_next_batch()
+        except Exception as e:
+            QMessageBox.critical(
+                self, "Erro", f"Ocorreu um erro ao buscar arquivos:\n{e}")
 
     def update_ui_for_auth_state(self, is_authenticated):
         self.is_authenticated = is_authenticated
