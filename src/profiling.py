@@ -7,10 +7,8 @@ import time
 import cProfile
 import pstats
 import io
-from datetime import datetime
 from functools import wraps
-from typing import Dict, List, Optional
-import os
+from typing import Dict, List
 
 
 class MemoryProfiler:

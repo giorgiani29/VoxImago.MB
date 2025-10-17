@@ -3,7 +3,6 @@
 # Gerencia a interface gráfica, eventos, filtros, autenticação e integração com os módulos do projeto.
 
 import os
-import time
 import sqlite3
 import webbrowser
 
@@ -15,18 +14,17 @@ from .profiling import memory_profiler, cpu_profiler
 
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QHBoxLayout, QLabel, QLineEdit, QPushButton,
-    QMessageBox, QFrame, QSizePolicy, QSpacerItem, QFileDialog,
-    QDialog, QCheckBox, QDialogButtonBox, QProgressBar, QComboBox, QCompleter,
+    QMessageBox, QFrame, QDialog, QCheckBox, QDialogButtonBox, QProgressBar, QComboBox, QCompleter,
     QFormLayout, QSplitter, QDateEdit, QVBoxLayout, QScrollArea, QProgressDialog, QListView, QSystemTrayIcon, QMenu,
     QToolButton, QAbstractItemView
 )
 from PyQt6.QtGui import QPixmap, QFont, QIcon, QAction, QDrag, QCursor
-from PyQt6.QtCore import Qt, QTimer, QStringListModel, QDate, QThread, pyqtSignal, QThreadPool, QRect, QUrl, QMimeData, QRunnable, QMetaObject, Q_ARG
+from PyQt6.QtCore import Qt, QTimer, QStringListModel, QDate, QThread, pyqtSignal, QThreadPool, QUrl, QMimeData, QRunnable, QMetaObject
 
 from .database import FileIndexer, normalize_text
 from .widgets import OptionsDialog
 from .utils import format_size, get_generic_thumbnail, load_settings, save_settings
-from .utils import is_thumbnail_cached, get_thumbnail_cache_path, generate_local_image_thumbnail, generate_drive_thumbnail, get_existing_thumbnail_cache_path, generate_local_thumbnail
+from .utils import is_thumbnail_cached, generate_drive_thumbnail, get_existing_thumbnail_cache_path, generate_local_thumbnail
 from .utils import SETTINGS_FILE as TOKEN_FILE
 
 SCOPES = ['https://www.googleapis.com/auth/drive.readonly']

@@ -7,7 +7,6 @@ import json
 import hashlib
 import mimetypes
 import requests
-import sys
 from PyQt6.QtGui import QPixmap, QPainter, QBrush, QColor, QImage
 from PyQt6.QtCore import Qt
 

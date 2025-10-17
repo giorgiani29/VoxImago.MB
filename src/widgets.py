@@ -3,23 +3,16 @@
 # Use este arquivo para importar widgets personalizados na interface principal.
 
 import os
-import sys
-import sqlite3
-import webbrowser
-import cv2
 import platform
 
 from PyQt6.QtWidgets import (
-    QWidget, QLabel, QVBoxLayout, QHBoxLayout, QPushButton, QFrame, QMessageBox, QApplication, QDialog, QDialogButtonBox, QCheckBox, QFileDialog, QScrollArea
+    QWidget, QLabel, QVBoxLayout, QPushButton, QMessageBox, QDialog, QDialogButtonBox, QCheckBox, QFileDialog, QScrollArea
 )
-from PyQt6.QtCore import Qt, pyqtSignal, QMimeData, QUrl, QThreadPool, QRunnable, QObject
-from PyQt6.QtGui import QPixmap, QFont, QPalette, QDrag, QImage, QPainter, QColor
+from PyQt6.QtCore import Qt, pyqtSignal, QRunnable
 
 
-from .utils import get_generic_thumbnail, format_size
 
-from .workers import ThumbnailWorker
-from .utils import load_settings, get_thumbnail_cache_key
+from .utils import load_settings
 
 THUMBNAIL_CACHE_DIR = "assets/thumbnail_cache"
 

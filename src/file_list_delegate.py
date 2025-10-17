@@ -2,10 +2,10 @@
 # Exibe itens com miniaturas, nomes e metadados na interface principal.
 
 import os
-from PyQt6.QtWidgets import QStyledItemDelegate, QStyleOptionViewItem, QWidget, QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QApplication, QStyle
-from PyQt6.QtGui import QPixmap, QFont, QPalette
-from PyQt6.QtCore import Qt, QModelIndex, QSize, QEvent, QRect, pyqtSignal, QObject
-from .utils import get_generic_thumbnail, format_size, is_thumbnail_cached, get_thumbnail_cache_path, get_existing_thumbnail_cache_path
+from PyQt6.QtWidgets import QStyledItemDelegate, QStyle
+from PyQt6.QtGui import QPixmap, QFont
+from PyQt6.QtCore import Qt, QSize, pyqtSignal
+from .utils import get_generic_thumbnail, is_thumbnail_cached, get_existing_thumbnail_cache_path
 
 
 class FileListDelegate(QStyledItemDelegate):

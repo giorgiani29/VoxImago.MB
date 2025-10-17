@@ -8,16 +8,12 @@ import sqlite3
 import requests
 import os
 import io
-import uuid
-import mimetypes
 import os
 import logging
-from .utils import load_settings, save_settings
 from datetime import datetime, timezone
-from .database import open_db_for_thread, remove_accents, normalize_text
+from .database import open_db_for_thread, normalize_text
 from .utils import get_thumbnail_cache_key
 from googleapiclient.http import MediaIoBaseDownload
-from googleapiclient.discovery import build
 from PyQt6.QtCore import QObject, pyqtSignal, QCoreApplication
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
