@@ -1,3 +1,7 @@
+"""
+Teste de casos extremos para busca FTS5
+"""
+
 import sqlite3
 
 print('🧪 TESTE DE CASOS EXTREMOS')
@@ -6,7 +10,6 @@ print('=' * 50)
 conn = sqlite3.connect('data/test_file_index.db')
 cursor = conn.cursor()
 
-# Teste caracteres especiais
 print('\n1. CARACTERES ESPECIAIS:')
 special_tests = [
     'josé',
@@ -26,7 +29,6 @@ for term in special_tests:
     except Exception as e:
         print(f'  {term}: ERRO - {e}')
 
-# Teste operadores complexos
 print('\n2. OPERADORES COMPLEXOS:')
 complex_tests = [
     '(jesus OR carol) AND (2020 OR 2021)',
@@ -44,7 +46,6 @@ for query in complex_tests:
     except Exception as e:
         print(f'  {query}: ERRO - {str(e)[:50]}')
 
-# Teste edge cases
 print('\n3. EDGE CASES:')
 edge_cases = [
     ('vazio', ''),

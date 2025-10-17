@@ -1,11 +1,14 @@
 #!/usr/bin/env python
+"""
+Teste final completo das funcionalidades do VoxImago
+"""
+
 import os
 import sys
 import sqlite3
 print("\n📋 TESTE 1: BUSCA FTS5 BÁSICA")
 print("\n📊 TESTE 3: METADADOS E FILTROS")
 print("-" * 50)
-"""Teste completo das funcionalidades do VoxImago"""
 
 sys.path.append('src')
 
@@ -22,7 +25,6 @@ def run_all_tests():
     tables = [t[0] for t in cursor.fetchall()]
     print(f"  Tabelas: {tables}")
 
-    # Teste 1: Busca FTS5 básica
     print("\n🔍 TESTE 1: BUSCA FTS5 BÁSICA")
     print("-" * 50)
 
@@ -58,7 +60,6 @@ def run_all_tests():
         except Exception as e:
             print(f"  {desc}: '{query}' → ERRO: {str(e)[:50]}")
 
-    # Teste 3: Metadados e filtros
     print("\n🔍 TESTE 3: METADADOS E FILTROS")
     print("-" * 50)
 
@@ -92,7 +93,6 @@ def run_all_tests():
     for ext, count in exts:
         print(f"    {ext}: {count} arquivos")
 
-    # Teste 4: Verificar fusão
     print("\n🔍 TESTE 4: VERIFICAR FUSÃO DE METADADOS")
     print("-" * 50)
 
@@ -101,7 +101,6 @@ def run_all_tests():
     desc_count = cursor.fetchone()[0]
     print(f"  Arquivos com descrição: {desc_count}")
 
-    # Verificar digital.jpg especificamente
     cursor.execute(
         "SELECT name, size, source, description FROM files WHERE LOWER(name) LIKE '%digital%'")
     digital_files = cursor.fetchall()
@@ -109,7 +108,6 @@ def run_all_tests():
     for name, size, source, desc in digital_files:
         print(f"    {name} ({size} bytes, {source}) → '{desc}'")
 
-    # Teste 5: Performance e duplicatas
     print("\n🔍 TESTE 5: DUPLICATAS E PERFORMANCE")
     print("-" * 50)
 
@@ -130,7 +128,6 @@ def run_all_tests():
     for name, count in duplicates:
         print(f"    {name}: {count} ocorrências")
 
-    # Por tamanho
     cursor.execute("""
         SELECT 
             CASE 
@@ -150,7 +147,6 @@ def run_all_tests():
 
     conn.close()
 
-    # Teste 6: Análise de código
     print("\n🔍 TESTE 6: ANÁLISE DE CÓDIGO")
     print("-" * 50)
 
@@ -171,33 +167,27 @@ def run_all_tests():
 
                 for line_num, line in enumerate(lines, 1):
                     line = line.strip()
-                    # Procurar definições de função
                     if line.startswith('def ') and not line.startswith('def _'):
                         func_name = line.split('(')[0].replace('def ', '')
                         functions_found.append(
                             (func_name, file_path, line_num))
 
-                    # Procurar imports
                     if line.startswith('import ') or line.startswith('from '):
                         imports_found.append(line)
 
     print(f"  Total de linhas de código: {total_lines}")
     print(f"  Funções públicas encontradas: {len(functions_found)}")
 
-    # Mostrar algumas funções
     if functions_found:
         print("  Algumas funções públicas:")
         for func, file, line in functions_found[:10]:
             print(f"    {func}() em {file}:{line}")
 
-    # Contar imports únicos
     unique_imports = set(imports_found)
     print(f"  Imports únicos: {len(unique_imports)}")
 
-    # Procurar possíveis problemas
     print("\n⚠️  POSSÍVEIS PROBLEMAS ENCONTRADOS:")
 
-    # Imports duplicados
     import_count = {}
     for imp in imports_found:
         import_count[imp] = import_count.get(imp, 0) + 1
@@ -211,13 +201,11 @@ def run_all_tests():
     else:
         print("  ✅ Nenhum import duplicado encontrado")
 
-    # Funções com nomes similares
     func_names = [f[0].lower() for f in functions_found]
     similar_funcs = []
     for i, name1 in enumerate(func_names):
         for j, name2 in enumerate(func_names[i+1:], i+1):
             if len(name1) > 3 and len(name2) > 3:
-                # Verificar similaridade simples
                 if name1 in name2 or name2 in name1:
                     similar_funcs.append(
                         (functions_found[i][0], functions_found[j][0]))

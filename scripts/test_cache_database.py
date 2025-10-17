@@ -1,3 +1,7 @@
+"""
+Teste de cache do banco de dados
+"""
+
 import time
 from src.database import FileIndexer
 

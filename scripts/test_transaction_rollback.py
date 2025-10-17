@@ -1,3 +1,7 @@
+"""
+Teste de rollback de transações no banco de dados
+"""
+
 import os
 import shutil
 from src.database import FileIndexer
@@ -27,8 +31,10 @@ def test_normal_batch():
 def test_rollback_batch():
     db = setup_test_db()
     files = [
-        {'id': '3', 'name': 'C.txt', 'path': '/tmp/C.txt', 'mimeType': 'text/plain', 'source': 'local'},
-        {'id': '4', 'name': 'D.txt', 'path': '/tmp/D.txt', 'mimeType': 'text/plain', 'source': 'local'}
+        {'id': '3', 'name': 'C.txt', 'path': '/tmp/C.txt',
+            'mimeType': 'text/plain', 'source': 'local'},
+        {'id': '4', 'name': 'D.txt', 'path': '/tmp/D.txt',
+            'mimeType': 'text/plain', 'source': 'local'}
     ]
     try:
         db.save_files_in_batch(files, 'local')
