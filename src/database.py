@@ -237,33 +237,33 @@ class FileIndexer:
         self.conn.commit()
 
     def count_files(self, source, search_term=None, filter_type=None, folder_id=None, advanced_filters=None):
-        query_base = "SELECT COUNT(*) FROM files"
+        self.ensure_conn()
         params = []
         where_clauses = []
 
-        quoted_search_term = search_term.strip().replace('"', '""')
-        query_term = f'"{quoted_search_term}*"'
-        if source:
-            query = f"SELECT COUNT(*) FROM search_index WHERE search_index MATCH ? AND source = ?"
-            self.cursor.execute(query, (query_term, source))
-        else:
-            query = f"SELECT COUNT(*) FROM search_index WHERE search_index MATCH ?"
+        file_ids = None
+        if search_term:
+            quoted_search_term = search_term.strip().replace('"', '""')
+            query_term = f'"{quoted_search_term}*"'
+            query = "SELECT DISTINCT file_id FROM search_index WHERE search_index MATCH ?"
             self.cursor.execute(query, (query_term,))
-        return self.cursor.fetchone()[0]
+            file_ids = [row[0] for row in self.cursor.fetchall()]
+            if not file_ids:
+                return 0
+            
+        if file_ids is not None:
+            placeholders = ','.join('?' for _ in file_ids)
+            where_clauses.append(f"file_id IN ({placeholders})")
+            params.extend(file_ids)
 
+        if source:
+            where_clauses.append("source=?")
+            params.append(source)
         if folder_id:
             where_clauses.append("parentId=?")
             params.append(folder_id)
         elif not search_term:
             where_clauses.append("(parentId IS NULL OR parentId = '')")
-
-        if search_term:
-            query_base = "SELECT COUNT(*) FROM search_index"
-            quoted_search_term = search_term.strip().replace('"', '""')
-            query_term = f'"{quoted_search_term}*"'
-            query = f"SELECT COUNT(*) FROM search_index WHERE search_index MATCH ?"
-            self.cursor.execute(query, (query_term,))
-            return self.cursor.fetchone()[0]
 
         if filter_type == 'image':
             where_clauses.append("mimeType LIKE 'image/%'")
@@ -289,21 +289,22 @@ class FileIndexer:
                 params.append(advanced_filters['size_max'] * 1024 * 1024)
             if 'modified_after' in advanced_filters and advanced_filters['modified_after']:
                 where_clauses.append("modifiedTime >= ?")
-                params.append(
-                    int(time.mktime(advanced_filters['modified_after'].timetuple())))
+                params.append(int(time.mktime(advanced_filters['modified_after'].timetuple())))
             if 'created_after' in advanced_filters and advanced_filters['created_after']:
                 where_clauses.append("createdTime >= ?")
-                params.append(
-                    int(time.mktime(advanced_filters['created_after'].timetuple())))
+                params.append(int(time.mktime(advanced_filters['created_after'].timetuple())))
             if 'created_before' in advanced_filters and advanced_filters['created_before']:
                 where_clauses.append("createdTime <= ?")
-                params.append(
-                    int(time.mktime(advanced_filters['created_before'].timetuple())))
+                params.append(int(time.mktime(advanced_filters['created_before'].timetuple())))
             if 'extension' in advanced_filters and advanced_filters['extension']:
                 where_clauses.append("name LIKE ?")
                 params.append(f"%{advanced_filters['extension']}")
+                where_clauses.append("mimeType != 'folder'")
+                where_clauses.append("mimeType != 'application/vnd.google-apps.folder'")
 
-        query = query_base + " WHERE " + " AND ".join(where_clauses)
+        query = "SELECT COUNT(*) FROM files"
+        if where_clauses:
+            query += " WHERE " + " AND ".join(where_clauses)
 
         self.cursor.execute(query, params)
         return self.cursor.fetchone()[0]

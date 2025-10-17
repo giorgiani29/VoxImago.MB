@@ -8,7 +8,7 @@
 - [x] Validar se o feedback ao usuário está claro durante operações longas.
 
 ## Quinta-feira (16/10)
-- [ ] Refatorar o loop de fusão para usar updates em lote (`executemany`) se possível.
+- [x] Refatorar o loop de fusão para usar updates em lote (`executemany`) se possível.(não funcionou)
 - [ ] Reduzir buscas SQL desnecessárias dentro do loop de fusão.
 - [ ] Garantir que os campos usados no matching tenham índices no banco.
 - [ ] Medir e comparar o tempo de execução antes/depois das mudanças.
@@ -32,6 +32,3 @@
 - [ ] Explorar processamento paralelo ou uso de dicionários em memória para matching.
 - [ ] Considerar internacionalização (i18n) se o app for usado por públicos diversos.
 
----
-
-> Atualize este planejamento conforme o andamento das tarefas e priorize o que for mais crítico para o MVP.
