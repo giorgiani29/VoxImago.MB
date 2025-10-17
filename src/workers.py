@@ -733,22 +733,35 @@ class DriveSyncWorker(QObject):
                 local_rows = [(match,) for match in matches] if matches else []
 
                 if matches and drive_item['size'] > 0:
+                    if len(matches) > 1:
+                        logging.warning(
+                            f"⚠️ Conflito de metadados: Múltiplos matches ({len(matches)}) para arquivo Drive '{drive_item['name']}' (ID: {drive_item['id']})")
                     for local_row in local_rows:
                         local_id = local_row[0]
                         if match_count < 5:
                             logging.debug(
                                 f"DEBUG: Match found for Drive file: {drive_item['name']} size: {drive_item['size']} -> local {local_id}")
                         indexer.cursor.execute(
-                            "UPDATE files SET description = ?, thumbnailLink = ?, webContentLink = ? WHERE file_id = ?",
-                            (drive_item['description'], drive_item['thumbnailLink'],
-                             drive_item['webContentLink'], local_id)
-                        )
-                        indexer.cursor.execute(
-                            "UPDATE search_index SET description = ?, normalized_description = ? WHERE file_id = ?",
-                            (drive_item['description'], normalize_text(
-                                drive_item['description']), local_id)
-                        )
-                        fusion_count += 1
+                            "SELECT description FROM files WHERE file_id = ?", (local_id,))
+                        local_desc = indexer.cursor.fetchone()
+                        if local_desc and local_desc[0] and local_desc[0] != drive_item['description']:
+                            logging.warning(
+                                f"⚠️ Conflito de metadados: Descrição local diferente para '{drive_item['name']}' (local: '{local_desc[0][:50]}...', drive: '{drive_item['description'][:50]}...')")
+                        try:
+                            indexer.cursor.execute(
+                                "UPDATE files SET description = ?, thumbnailLink = ?, webContentLink = ? WHERE file_id = ?",
+                                (drive_item['description'], drive_item['thumbnailLink'],
+                                 drive_item['webContentLink'], local_id)
+                            )
+                            indexer.cursor.execute(
+                                "UPDATE search_index SET description = ?, normalized_description = ? WHERE file_id = ?",
+                                (drive_item['description'], normalize_text(
+                                    drive_item['description']), local_id)
+                            )
+                            fusion_count += 1
+                        except Exception as e:
+                            logging.error(
+                                f"❌ Erro ao fusionar metadados para arquivo '{drive_item['name']}' (ID: {drive_item['id']}): {e}")
                         match_count += 1
                         if fusion_count % 1000 == 0 and fusion_count > 0:
                             indexer.conn.commit()
@@ -756,10 +769,8 @@ class DriveSyncWorker(QObject):
                                 f"[LOG] Fusionados até agora: {fusion_count}")
                     matched_drive_ids.append(drive_item['id'])
                 elif drive_item['size'] > 0:
-                    no_match_count = drive_with_size - match_count
-                    if no_match_count <= 5:
-                        logging.debug(
-                            f"DEBUG: No match for Drive file: {drive_item['name']} size: {drive_item['size']}")
+                    logging.warning(
+                        f"❌ Falha de fusão: Nenhum match encontrado para arquivo Drive '{drive_item['name']}' (tamanho: {drive_item['size']}, ID: {drive_item['id']})")
 
             logging.info(
                 f"[LOG] Total Drive files: {total_drive}, with size >0: {drive_with_size}, matches: {match_count}")
