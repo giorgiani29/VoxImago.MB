@@ -37,12 +37,13 @@ def test_rollback_batch():
             'mimeType': 'text/plain', 'source': 'local'}
     ]
     try:
-        db.save_files_in_batch(files, 'local')
+        db.save_files_in_batch(files, 'local', simulate_error=True)
     except Exception as e:
-        print(f"Erro capturado: {e}")
+        print(f"Erro capturado como esperado: {e}")
     count = db.get_file_count('local')
     print(f"Após rollback: {count} arquivos salvos (esperado: 0)")
     db.close()
+    assert count == 0
 
 
 if __name__ == "__main__":

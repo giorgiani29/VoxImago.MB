@@ -21,20 +21,22 @@
 - ⚠️ Sistema está salvando dados mesmo após erro/exceção
 
 **Tarefas:**
-- [ ] Investigar implementação atual do rollback em `src/database.py`
-- [ ] Identificar onde as transações estão sendo commitadas indevidamente
-- [ ] Implementar controle de transações adequado:
-  - [ ] `BEGIN TRANSACTION` no início de operações em lote
-  - [ ] `COMMIT` apenas em caso de sucesso completo
-  - [ ] `ROLLBACK` em caso de qualquer exceção
-- [ ] Adicionar context manager para garantir rollback automático
-- [ ] Testar com `test_transaction_rollback.py` até passar 100%
+- [x] Investigar implementação atual do rollback em `src/database.py`
+- [x] Identificar onde as transações estão sendo commitadas indevidamente
+- [x] Implementar controle de transações adequado:
+  - [x] `BEGIN TRANSACTION` no início de operações em lote
+  - [x] `COMMIT` apenas em caso de sucesso completo
+  - [x] `ROLLBACK` em caso de qualquer exceção
+- [x] Adicionar context manager para garantir rollback automático
+- [x] Testar com `test_transaction_rollback.py` até passar 100%
 - [ ] Adicionar testes adicionais para cenários críticos:
-  - [ ] Rollback com múltiplos arquivos
+  - [x] Rollback com múltiplos arquivos
   - [ ] Rollback durante fusão de metadados
   - [ ] Rollback em operações de delete em lote
 - [ ] Documentar o mecanismo de transações no código
 - [ ] Atualizar RELATORIO_TESTES.md com correções aplicadas
+
+**ver o app log antes de começar segunda**
 
 **Critério de Sucesso:**
 - `test_transaction_rollback.py` deve passar com 0 arquivos após rollback

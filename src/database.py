@@ -181,55 +181,56 @@ class FileIndexer:
         self.cursor.execute("PRAGMA synchronous=FULL")
         return list(dict.fromkeys(suggestions))
 
-    def save_files_in_batch(self, files_list, source):
+    def save_files_in_batch(self, files_list, source, simulate_error=False):
         self.ensure_conn()
         try:
-            self.conn.execute('BEGIN')
-            file_ids = [(item.get('id'),) for item in files_list]
-            self.cursor.executemany(
-                "DELETE FROM files WHERE file_id = ?", file_ids)
+            with self.conn:
+                file_ids = [(item.get('id'),) for item in files_list]
+                self.cursor.executemany(
+                    "DELETE FROM files WHERE file_id = ?", file_ids)
 
-            self.cursor.executemany(
-                "DELETE FROM search_index WHERE file_id = ?", file_ids)
+                self.cursor.executemany(
+                    "DELETE FROM search_index WHERE file_id = ?", file_ids)
 
-            data_files = [
-                (
-                    item.get('id'),
-                    item.get('name'),
-                    item.get('path'),
-                    item.get('mimeType'),
-                    item.get('source'),
-                    item.get('description'),
-                    item.get('thumbnailLink'),
-                    item.get('thumbnailPath'),
-                    item.get('size', 0),
-                    item.get('modifiedTime'),
-                    item.get('createdTime'),
-                    item.get('parentId'),
-                    item.get('webContentLink'),
-                    0
-                ) for item in files_list
-            ]
-            self.cursor.executemany(
-                "INSERT OR REPLACE INTO files VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", data_files)
+                data_files = [
+                    (
+                        item.get('id'),
+                        item.get('name'),
+                        item.get('path'),
+                        item.get('mimeType'),
+                        item.get('source'),
+                        item.get('description'),
+                        item.get('thumbnailLink'),
+                        item.get('thumbnailPath'),
+                        item.get('size', 0),
+                        item.get('modifiedTime'),
+                        item.get('createdTime'),
+                        item.get('parentId'),
+                        item.get('webContentLink'),
+                        0
+                    ) for item in files_list
+                ]
+                self.cursor.executemany(
+                    "INSERT OR REPLACE INTO files VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", data_files)
 
-            data_search_index = [
-                (
-                    item.get('name', ''),
-                    item.get('description', ''),
-                    normalize_text(item.get('name', '')),
-                    normalize_text(item.get('description', '')),
-                    item.get('id'),
-                    item.get('source')
-                ) for item in files_list
-            ]
-            self.cursor.executemany(
-                "INSERT OR REPLACE INTO search_index VALUES (?, ?, ?, ?, ?, ?)", data_search_index)
+                data_search_index = [
+                    (
+                        item.get('name', ''),
+                        item.get('description', ''),
+                        normalize_text(item.get('name', '')),
+                        normalize_text(item.get('description', '')),
+                        item.get('id'),
+                        item.get('source')
+                    ) for item in files_list
+                ]
+                self.cursor.executemany(
+                    "INSERT OR REPLACE INTO search_index VALUES (?, ?, ?, ?, ?, ?)", data_search_index)
 
-            self.conn.commit()
+                if simulate_error:
+                    raise ValueError("Simulating an error for rollback")
+
         except Exception as e:
-            self.conn.rollback()
-            print(f"Erro ao salvar arquivos em lote: {e}")
+            print(f"Erro ao salvar arquivos em lote, rollback acionado: {e}")
             raise
 
     def clear_cache(self):
