@@ -14,8 +14,8 @@
 ## Sexta-feira (17/10)
 - [x] Implementar rollback e transações para garantir atomicidade em lotes grandes.
 - [x] Tratar exceções em todos os slots e sinais da interface PyQt6.
-- [ ] Adicionar logs de falhas de fusão e conflitos de metadados.
-- [ ] Padronizar nomes de arquivos de banco nos testes para evitar sobrescrita.
+- [x] Adicionar logs de falhas de fusão e conflitos de metadados.
+- [x] Padronizar nomes de arquivos de banco nos testes para evitar sobrescrita.
 
 ## Segunda-feira (20/10)
 - [ ] Adicionar testes automatizados para o sistema de fusão, simulando cenários de conflito.

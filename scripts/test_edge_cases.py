@@ -3,7 +3,7 @@ import sqlite3
 print('🧪 TESTE DE CASOS EXTREMOS')
 print('=' * 50)
 
-conn = sqlite3.connect('data/file_index.db')
+conn = sqlite3.connect('data/test_file_index.db')
 cursor = conn.cursor()
 
 # Teste caracteres especiais

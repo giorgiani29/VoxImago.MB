@@ -1,12 +1,12 @@
 #!/usr/bin/env python
+import os
+import sys
+import sqlite3
 print("\n📋 TESTE 1: BUSCA FTS5 BÁSICA")
 print("\n📊 TESTE 3: METADADOS E FILTROS")
 print("-" * 50)
 """Teste completo das funcionalidades do VoxImago"""
 
-import sqlite3
-import sys
-import os
 sys.path.append('src')
 
 
@@ -14,7 +14,7 @@ def run_all_tests():
     print("🧪 TESTE COMPLETO DE FUNCIONALIDADES VOXMAGO")
     print("=" * 70)
 
-    conn = sqlite3.connect('data/file_index.db')
+    conn = sqlite3.connect('data/test_file_index.db')
     cursor = conn.cursor()
 
     print("\n📊 ESTRUTURA DO BANCO:")

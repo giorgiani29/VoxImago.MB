@@ -16,7 +16,7 @@ def test_basic_search():
     print("🔍 TESTE 1: OPERADORES DE BUSCA BÁSICOS")
     print("=" * 60)
 
-    conn = sqlite3.connect('data/file_index.db')
+    conn = sqlite3.connect('data/test_file_index.db')
     cursor = conn.cursor()
 
     # 1.1 Busca simples
@@ -56,7 +56,7 @@ def test_operators():
     print("\n🔍 TESTE 2: OPERADORES FTS5")
     print("=" * 60)
 
-    conn = sqlite3.connect('data/file_index.db')
+    conn = sqlite3.connect('data/test_file_index.db')
     cursor = conn.cursor()
 
     # 2.1 Operador OR
@@ -116,6 +116,14 @@ def test_metadata_search():
     print("\n🔍 TESTE 3: BUSCA POR METADADOS")
     print("=" * 60)
 
+    conn = sqlite3.connect('data/test_file_index.db')
+
+
+def test_metadata_search():
+    """Teste 3: Busca por metadados"""
+    print("\n🔍 TESTE 3: BUSCA POR METADADOS")
+    print("=" * 60)
+
     conn = sqlite3.connect('data/file_index.db')
     cursor = conn.cursor()
 
@@ -168,7 +176,7 @@ def test_filters():
     print("\n🔍 TESTE 4: FILTROS POR CATEGORIA")
     print("=" * 60)
 
-    conn = sqlite3.connect('data/file_index.db')
+    conn = sqlite3.connect('data/test_file_index.db')
     cursor = conn.cursor()
 
     # Definir mapeamentos de extensão como no código original
@@ -216,7 +224,7 @@ def test_fusion():
     print("\n🔍 TESTE 5: VERIFICAR FUSÃO DE METADADOS")
     print("=" * 60)
 
-    conn = sqlite3.connect('data/file_index.db')
+    conn = sqlite3.connect('data/test_file_index.db')
     cursor = conn.cursor()
 
     # 5.1 Verificar arquivos com descrição
