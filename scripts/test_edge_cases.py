@@ -1,6 +1,4 @@
-"""
-Teste de casos extremos para busca FTS5
-"""
+#Teste de casos extremos para busca FTS5
 
 import sqlite3
 

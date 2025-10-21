@@ -707,7 +707,6 @@ class DriveSyncWorker(QObject):
             self.update_status.emit(f"Iniciando fusão de metadados...")
             self.progress_update.emit(0, f"Iniciando fusão de metadados...")
 
-            # inicio da fusão de arquivos do drive com os locais
             for i, drive_item in enumerate(processed_items):
                 if drive_item['size'] > 0:
                     drive_with_size += 1
@@ -775,7 +774,7 @@ class DriveSyncWorker(QObject):
             logging.info(
                 f"[LOG] Total Drive files: {total_drive}, with size >0: {drive_with_size}, matches: {match_count}")
             logging.info(f"[LOG] Total fusionados: {fusion_count}")
-            # fim da fusão de arquivos do drive com os locais
+
             self.update_status.emit(
                 f"Fusão concluída. Total fusionados: {fusion_count}")
             self.progress_update.emit(

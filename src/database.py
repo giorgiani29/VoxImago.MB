@@ -66,7 +66,7 @@ class FileIndexer:
         return terms, exclude_terms, or_groups, filters
 
     def buscar_drive_por_metadados(self, termo):
-        query = "SELECT file_id, name, path, description, starred, mimeType FROM files WHERE source = 'drive' AND (name LIKE ? OR description LIKE ?)"
+        query = "SELECT file_id, name, path, description, starred, mimeType, createdTime FROM files WHERE source = 'drive' AND (name LIKE ? OR description LIKE ?)"
         like_term = f"%{termo}%"
         self.cursor.execute(query, (like_term, like_term))
         resultados = []
@@ -78,6 +78,7 @@ class FileIndexer:
                 'description': row[3],
                 'starred': bool(row[4]),
                 'mimeType': row[5],
+                'createdTime': row[6],
             }
             arquivo['is_local'] = os.path.exists(
                 arquivo['local_path']) if arquivo['local_path'] else False
@@ -341,7 +342,9 @@ class FileIndexer:
             'name_asc': 'name ASC',
             'name_desc': 'name DESC',
             'size_asc': 'size ASC',
-            'size_desc': 'size DESC'
+            'size_desc': 'size DESC',
+            'modified_desc': 'modifiedTime DESC',
+            'modified_asc': 'modifiedTime ASC'
         }
         order_by_clause = sort_map.get(sort_by, 'name ASC')
         files_where_clauses = []
@@ -478,7 +481,7 @@ class FileIndexer:
                             if ext_conditions:
                                 files_where_clauses.append(
                                     f"({' OR '.join(ext_conditions)})")
-            query = f"SELECT file_id, name, path, mimeType, source, description, thumbnailLink, thumbnailPath, size, modifiedTime, parentId, starred FROM files WHERE {' AND '.join(files_where_clauses)} ORDER BY {order_by_clause} LIMIT ? OFFSET ?"
+            query = f"SELECT file_id, name, path, mimeType, source, description, thumbnailLink, thumbnailPath, size, modifiedTime, createdTime, parentId, starred FROM files WHERE {' AND '.join(files_where_clauses)} ORDER BY {order_by_clause} LIMIT ? OFFSET ?"
             if explorer_special:
                 query = query.replace("WHERE", "WHERE source = 'local' AND")
             files_params.extend([page_size, offset])
@@ -496,8 +499,9 @@ class FileIndexer:
                     'thumbnailPath': row[7],
                     'size': row[8],
                     'modifiedTime': row[9],
-                    'parentId': row[10],
-                    'starred': bool(row[11])
+                    'createdTime': row[10],
+                    'parentId': row[11],
+                    'starred': bool(row[12])
                 } for row in rows
             ]
             self._paged_cache[cache_key] = files

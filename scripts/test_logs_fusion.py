@@ -1,9 +1,5 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-Script rápido para testar logs de fusão de metadados
-Executa uma sincronização forçada do Drive para gerar logs
-"""
+#Script rápido para testar logs de fusão de metadados
+#Executa uma sincronização forçada do Drive para gerar logs
 
 from googleapiclient.discovery import build
 from google.oauth2.credentials import Credentials
@@ -64,7 +60,6 @@ def test_fusion_logs():
             print(f"❌ Sincronização falhou: {error}")
             app.quit()
 
-        # Timeout de 5 minutos para o teste
         def on_timeout():
             print("⏰ Timeout atingido (5 minutos) - forçando término do teste")
             worker.terminate()

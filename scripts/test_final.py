@@ -1,7 +1,4 @@
-#!/usr/bin/env python
-"""
-Teste final completo das funcionalidades do VoxImago
-"""
+#Teste final completo das funcionalidades do VoxImago
 
 import os
 import sys

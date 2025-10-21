@@ -1,6 +1,4 @@
-"""
-Teste completo de todas as funcionalidades do VoxImago
-"""
+#Teste completo de todas as funcionalidades do VoxImago
 
 import sqlite3
 from src.database import normalize_text
@@ -10,7 +8,6 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
 def test_basic_search():
-    """Teste 1: Operadores de busca básicos"""
     print("🔍 TESTE 1: OPERADORES DE BUSCA BÁSICOS")
     print("=" * 60)
 
@@ -71,12 +68,10 @@ def test_basic_search():
 
 
 def test_operators():
-    """Teste 2: Operadores FTS5"""
     print("\n🔍 TESTE 2: OPERADORES FTS5")
 
 
 def test_operators():
-    """Teste 2: Operadores FTS5"""
     print("\n🔍 TESTE 2: OPERADORES FTS5")
     print("=" * 60)
 
@@ -147,7 +142,6 @@ def test_operators():
 
 
 def test_metadata_search():
-    """Teste 3: Busca por metadados"""
     print("\n🔍 TESTE 3: BUSCA POR METADADOS")
     print("=" * 60)
 
@@ -219,7 +213,6 @@ def test_metadata_search():
 
 
 def test_filters():
-    """Teste 4: Filtros por categoria"""
     print("\n🔍 TESTE 4: FILTROS POR CATEGORIA")
     print("=" * 60)
 
@@ -299,7 +292,6 @@ def test_filters():
 
 
 def test_fusion():
-    """Teste 5: Verificar fusão de metadados"""
     print("\n🔍 TESTE 5: VERIFICAR FUSÃO DE METADADOS")
     print("=" * 60)
 

@@ -1,7 +1,5 @@
-"""
-Testes automatizados para cenários de fusão de metadados
-Simula conflitos e valida o comportamento do sistema de fusão
-"""
+#Testes automatizados para cenários de fusão de metadados
+#Simula conflitos e valida o comportamento do sistema de fusão
 
 from src.database import FileIndexer, normalize_text
 import os

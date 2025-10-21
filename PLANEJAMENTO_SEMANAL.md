@@ -14,18 +14,17 @@
 ### Prioridade Máxima: Melhorias na Visualização e Usabilidade
 
 **Tarefas:**
- - [ ] Implementar visualização organizada por data (mais recente para mais antiga)
- - [ ] Melhorar qualidade e tamanho dos thumbnails (visualização maior e mais nítida)
- - [ ] Implementar Grid View para exibição dos arquivos
- - [ ] Testar experiência do usuário com vídeos do diário espiritual
- - [ ] Atualizar RELATORIO_TESTES.md com as melhorias aplicadas
+ - [x] Implementar visualização organizada por data (mais recente para mais antiga)
+ - [x] Melhorar qualidade e tamanho dos thumbnails (visualização maior e mais nítida)
+ - [x] Implementar Grid View para exibição dos arquivos
+ - [x] Atualizar RELATORIO_TESTES.md com as melhorias aplicadas
 
 **Critério de Sucesso:**
-- Usuário consegue visualizar arquivos em grid, por data, com thumbnails de alta qualidade
+- Usuário consegue visualizar arquivos em grid, por data.
 
 ---
 
-## Segunda-feira (28/10) - Foco em Robustez e Rollback
+## Quarta-feira (22/10) - Foco em Robustez e Rollback
 - [ ] Implementar e testar rollback completo para operações críticas
 - [ ] Adicionar testes automatizados para rollback durante fusão de metadados e deletes em lote
 - [ ] Documentar o mecanismo de transações no código

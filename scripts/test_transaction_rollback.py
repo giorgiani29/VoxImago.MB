@@ -1,6 +1,4 @@
-"""
-Teste de rollback de transações no banco de dados
-"""
+#Teste de rollback de transações no banco de dados
 
 import os
 import shutil

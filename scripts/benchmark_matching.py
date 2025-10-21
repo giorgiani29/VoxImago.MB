@@ -1,8 +1,5 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-Benchmark de performance para operações de matching e busca
-"""
+#Benchmark de performance para operações de matching e busca
+
 
 from src.database import FileIndexer
 import time
@@ -13,7 +10,6 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
 def benchmark_matching():
-    """Executa benchmarks de performance para operações de banco"""
     try:
         indexer = FileIndexer()
     except Exception as e:

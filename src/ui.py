@@ -19,13 +19,14 @@ from PyQt6.QtWidgets import (
     QToolButton, QAbstractItemView
 )
 from PyQt6.QtGui import QPixmap, QFont, QIcon, QAction, QDrag, QCursor
-from PyQt6.QtCore import Qt, QTimer, QStringListModel, QDate, QThread, pyqtSignal, QThreadPool, QUrl, QMimeData, QRunnable, QMetaObject
+from PyQt6.QtCore import Qt, QTimer, QStringListModel, QDate, QThread, pyqtSignal, QThreadPool, QUrl, QMimeData, QRunnable, QMetaObject, QSize
 
 from .database import FileIndexer, normalize_text
 from .widgets import OptionsDialog
 from .utils import format_size, get_generic_thumbnail, load_settings, save_settings
 from .utils import is_thumbnail_cached, generate_drive_thumbnail, get_existing_thumbnail_cache_path, generate_local_thumbnail
 from .utils import SETTINGS_FILE as TOKEN_FILE
+from datetime import datetime
 
 SCOPES = ['https://www.googleapis.com/auth/drive.readonly']
 
@@ -281,6 +282,26 @@ class DriveFileGalleryApp(QMainWindow):
             QMessageBox.critical(
                 self, "Erro", f"Ocorreu um erro ao finalizar o aplicativo:\n{e}")
 
+    def set_view_mode(self, mode):
+        if mode == "grid":
+            self.file_list_view.setViewMode(QListView.ViewMode.IconMode)
+            self.file_list_view.setIconSize(QSize(200, 200))
+            self.file_list_view.setGridSize(QSize(240, 280))
+            self.file_list_view.setSpacing(8)
+            self.action_grid_view.setChecked(True)
+            self.action_list_view.setChecked(False)
+            self.file_list_view.verticalScrollBar().setSingleStep(60)
+            self.file_list_view.verticalScrollBar().setPageStep(240)
+        else:
+            self.file_list_view.setViewMode(QListView.ViewMode.ListMode)
+            self.file_list_view.setIconSize(QSize(48, 48))
+            self.file_list_view.setGridSize(QSize(60, 60))
+            self.file_list_view.setSpacing(4)
+            self.action_grid_view.setChecked(False)
+            self.action_list_view.setChecked(True)
+            self.file_list_view.verticalScrollBar().setSingleStep(20)
+            self.file_list_view.verticalScrollBar().setPageStep(60)
+
     def on_tray_icon_activated(self, reason):
         try:
             if reason == QSystemTrayIcon.ActivationReason.DoubleClick:
@@ -399,6 +420,18 @@ class DriveFileGalleryApp(QMainWindow):
         self.explorer_action.triggered.connect(self.toggle_explorer_special)
         self.tools_menu.addAction(self.explorer_action)
 
+        self.action_grid_view = QAction("Visualização em Grade", self)
+        self.action_grid_view.setCheckable(True)
+        self.action_grid_view.triggered.connect(
+            lambda: self.set_view_mode("grid"))
+        self.tools_menu.addAction(self.action_grid_view)
+
+        self.action_list_view = QAction("Visualização em Lista", self)
+        self.action_list_view.setCheckable(True)
+        self.action_list_view.triggered.connect(
+            lambda: self.set_view_mode("list"))
+        self.tools_menu.addAction(self.action_list_view)
+
         self.tools_button = QToolButton(self)
         self.tools_button.setText("🛠️ Ferramentas")
         self.tools_button.setPopupMode(
@@ -427,6 +460,8 @@ class DriveFileGalleryApp(QMainWindow):
         self.sort_combo.addItem("Nome (Z-A)", "name_desc")
         self.sort_combo.addItem("Tamanho (Menor)", "size_asc")
         self.sort_combo.addItem("Tamanho (Maior)", "size_desc")
+        self.sort_combo.addItem("Data (Mais recente)", "modified_desc")
+        self.sort_combo.addItem("Data (Mais antiga)", "modified_asc")
         self.sort_combo.activated.connect(self.change_sort_order)
         self.sort_combo.setEnabled(False)
 
@@ -577,6 +612,8 @@ class DriveFileGalleryApp(QMainWindow):
         self.file_list_view.doubleClicked.connect(self.on_double_click)
         self.file_list_view.verticalScrollBar().valueChanged.connect(self.on_scroll)
 
+        self.set_view_mode("grid")
+        self.file_list_view.setResizeMode(QListView.ResizeMode.Adjust)
         self.file_list_view.setDragEnabled(True)
         self.file_list_view.setAcceptDrops(False)
         self.file_list_view.setDropIndicatorShown(False)
@@ -587,9 +624,9 @@ class DriveFileGalleryApp(QMainWindow):
 
         self.splitter.addWidget(self.file_list_view)
         self.splitter.addWidget(self.details_panel)
-        self.details_panel.setMinimumWidth(320)
-        self.details_panel.setMaximumWidth(340)
-        self.splitter.setSizes([900, 340])
+        self.details_panel.setMinimumWidth(400)
+        self.details_panel.setMaximumWidth(600)
+        self.splitter.setSizes([900, 400])
 
         main_layout.addWidget(self.splitter)
 
@@ -2043,7 +2080,7 @@ class FileDetailsPanel(QFrame):
         self.main_layout.addWidget(self.title_label)
 
         self.thumbnail_label = QLabel()
-        self.thumbnail_label.setFixedSize(192, 192)
+        self.thumbnail_label.setFixedSize(400, 400)
         self.thumbnail_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.main_layout.addWidget(self.thumbnail_label)
 
@@ -2060,6 +2097,7 @@ class FileDetailsPanel(QFrame):
         self.path_label.setWordWrap(True)
         self.description_label = QLabel("N/A")
         self.description_label.setWordWrap(True)
+        self.created_label = QLabel("N/A")
 
         self.form_layout.addRow(QLabel("<b>Nome:</b>"), self.name_label)
         self.form_layout.addRow(QLabel("<b>Fonte:</b>"), self.source_label)
@@ -2068,6 +2106,8 @@ class FileDetailsPanel(QFrame):
             QLabel("<b>Caminho/Link:</b>"), self.path_label)
         self.form_layout.addRow(
             QLabel("<b>Descrição:</b>"), self.description_label)
+        self.form_layout.addRow(
+            QLabel("<b>Data de criação:</b>"), self.created_label)
 
         self.open_drive_button = QPushButton("Abrir no Drive")
         self.open_drive_button.setVisible(False)
@@ -2115,7 +2155,24 @@ class FileDetailsPanel(QFrame):
             'mimeType') not in ['application/vnd.google-apps.folder', 'folder'] else "N/A")
         self.path_label.setText(file_item.get(
             'path', file_item.get('webViewLink', 'N/A')))
+
+        created_timestamp = file_item.get('createdTime')
+        if created_timestamp:
+            try:
+                if isinstance(created_timestamp, (int, float)):
+                    created_date = datetime.fromtimestamp(created_timestamp)
+                else:
+                    created_date = datetime.fromisoformat(
+                        str(created_timestamp).replace('Z', '+00:00'))
+                created_str = created_date.strftime('%d/%m/%Y')
+                self.created_label.setText(created_str)
+            except Exception:
+                self.created_label.setText(str(created_timestamp))
+        else:
+            self.created_label.setText("N/A")
+
         self.description_label.setText(file_item.get('description', 'N/A'))
+
         self.current_file_item = file_item
 
         self.open_drive_button = QPushButton("Abrir no Drive")
@@ -2129,7 +2186,7 @@ class FileDetailsPanel(QFrame):
             self.open_drive_button.setVisible(False)
 
         self.thumbnail_label.setPixmap(get_generic_thumbnail(
-            file_item.get('mimeType'), size=(96, 96)))
+            file_item.get('mimeType'), size=(400, 400)))
 
         thumbnail_path = file_item.get('thumbnailPath')
         thumbnail_link = file_item.get('thumbnailLink')
@@ -2169,7 +2226,7 @@ class FileDetailsPanel(QFrame):
                 pass
         elif local_path and os.path.exists(local_path):
             self.thumbnail_label.setPixmap(
-                get_generic_thumbnail(mime, size=(96, 96)))
+                get_generic_thumbnail(mime, size=(400, 400)))
             self.show()
         else:
             self.show()

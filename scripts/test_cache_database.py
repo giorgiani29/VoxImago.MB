@@ -1,6 +1,4 @@
-"""
-Teste de cache do banco de dados
-"""
+#Teste de cache do banco de dados
 
 from src.database import FileIndexer
 import time
@@ -11,7 +9,6 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
 def test_cache():
-    """Testa o sistema de cache do banco de dados"""
     try:
         indexer = FileIndexer()
     except Exception as e:
