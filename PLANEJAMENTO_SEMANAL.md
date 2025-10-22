@@ -1,6 +1,7 @@
 # Planejamento Semanal (20 a 26 de Outubro de 2025)
 
-## ✅ Concluído (13-17/10)
+
+## ✅ Concluído (13-22/10)
 - Logs detalhados do processo de fusão e sincronização
 - Prints/logs para início/fim da fusão, progresso em lotes
 - Tentativa de refatoração com `executemany` (não funcionou)
@@ -9,22 +10,26 @@
 - Tratamento de exceções nos slots PyQt6
 - Logs de falhas de fusão e conflitos de metadados
 - Padronização de nomes de arquivos de banco nos testes
+- Implementar visualização organizada por data (mais recente para mais antiga)
+- Melhorar qualidade e tamanho dos thumbnails (visualização maior e mais nítida)
+- Implementar Grid View para exibição dos arquivos
+- Atualizar RELATORIO_TESTES.md com as melhorias aplicadas
 
 ---
-### Prioridade Máxima: Melhorias na Visualização e Usabilidade
+
+### Prioridade Máxima: Aprimorar Sistema de Ordenação por Datas
 
 **Tarefas:**
- - [x] Implementar visualização organizada por data (mais recente para mais antiga)
- - [x] Melhorar qualidade e tamanho dos thumbnails (visualização maior e mais nítida)
- - [x] Implementar Grid View para exibição dos arquivos
- - [x] Atualizar RELATORIO_TESTES.md com as melhorias aplicadas
+ - [ ] Aprimorar o sistema de ordenação dos arquivos, priorizando ordenação por datas (mais recente para mais antiga e vice-versa)
+ - [ ] Revisar e melhorar a lógica de ordenação, interface e testes relacionados
+ - [ ] Atualizar RELATORIO_TESTES.md com as melhorias aplicadas
 
 **Critério de Sucesso:**
-- Usuário consegue visualizar arquivos em grid, por data.
+- Usuário consegue ordenar arquivos facilmente por datas, tanto em grid quanto em lista.
 
 ---
 
-## Quarta-feira (22/10) - Foco em Robustez e Rollback
+## segunda-feira (27/10) - Foco em Robustez e Rollback
 - [ ] Implementar e testar rollback completo para operações críticas
 - [ ] Adicionar testes automatizados para rollback durante fusão de metadados e deletes em lote
 - [ ] Documentar o mecanismo de transações no código
@@ -32,7 +37,7 @@
 - [ ] Revisar dependências do requirements.txt
 - [ ] Executar suite completa de testes e atualizar relatório
 
-## Para a próxima semana (caso não finalize)
+## Para as próximas semanas
 
 ## Para as próximas semanas
 - [ ] Permitir configuração do critério de matching (nome, tamanho, hash)
