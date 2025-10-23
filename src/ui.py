@@ -460,8 +460,8 @@ class DriveFileGalleryApp(QMainWindow):
         self.sort_combo.addItem("Nome (Z-A)", "name_desc")
         self.sort_combo.addItem("Tamanho (Menor)", "size_asc")
         self.sort_combo.addItem("Tamanho (Maior)", "size_desc")
-        self.sort_combo.addItem("Data (Mais recente)", "modified_desc")
-        self.sort_combo.addItem("Data (Mais antiga)", "modified_asc")
+        self.sort_combo.addItem("Data (Mais recente)", "created_desc")
+        self.sort_combo.addItem("Data (Mais antiga)", "created_asc")
         self.sort_combo.activated.connect(self.change_sort_order)
         self.sort_combo.setEnabled(False)
 
@@ -1226,8 +1226,11 @@ class DriveFileGalleryApp(QMainWindow):
         self._populate_extension_combo()
         self.clear_display()
         self.load_next_batch()
+        # Sem isso não atualiza as thumbnails corretamente
+        if hasattr(self.indexer, '_paged_cache'):
+            self.indexer._paged_cache.clear()
 
-        self.apply_advanced_filters()
+        self.apply_advanced_filters()  # isso faz a load_next_batch de novo e faz com que funcione
 
         print("✅ Scan local concluído - verificando se deve iniciar Drive sync")
 

@@ -20,11 +20,24 @@
 ### Prioridade Máxima: Aprimorar Sistema de Ordenação por Datas
 
 **Tarefas:**
- - [ ] Aprimorar o sistema de ordenação dos arquivos, priorizando ordenação por datas (mais recente para mais antiga e vice-versa)
- - [ ] Revisar e melhorar a lógica de ordenação, interface e testes relacionados
- - [ ] Atualizar RELATORIO_TESTES.md com as melhorias aplicadas
+ - [x] Bug: arquivos locais não apareciam após sincronização, só após reiniciar o app
+ - [ ] Corrigir casos de data N/A no banco de dados (garantir datas válidas para todos os arquivos)
+ - [ ] Adicionar opção para forçar resincronização local (scan completo manual)
+ - [ ] Aprimorar ordenação por data (garantir consistência e usabilidade)
+ - [ ] Normalizar acentuação e caracteres especiais em nomes e buscas (ex: "ú", "&")
+ - [ ] Implementar menu contextual: abrir no Explorer, copiar caminho (lista e thumbnails)
+ - [ ] Gerar thumbnails para arquivos RAW e vídeos, ou exibir ícone padrão
+ - [ ] Melhorar feedback e fluxo do token de autenticação (login/logout, expiração)
+ - [ ] Revisar e aprimorar a UI conforme necessidades identificadas
 
 **Critério de Sucesso:**
+- Usuário consegue forçar resincronização local facilmente
+- Datas exibidas corretamente e ordenação funcional
+- Menu contextual disponível e funcional
+- Thumbnails para mais tipos de arquivos
+- Busca e exibição sem problemas de acentuação
+- UI mais intuitiva e responsiva
+- Fluxo de autenticação robusto
 - Usuário consegue ordenar arquivos facilmente por datas, tanto em grid quanto em lista.
 
 ---
@@ -36,8 +49,6 @@
 - [ ] Validar integridade de dados após rollback
 - [ ] Revisar dependências do requirements.txt
 - [ ] Executar suite completa de testes e atualizar relatório
-
-## Para as próximas semanas
 
 ## Para as próximas semanas
 - [ ] Permitir configuração do critério de matching (nome, tamanho, hash)

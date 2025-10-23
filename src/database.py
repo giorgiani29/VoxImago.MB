@@ -343,8 +343,8 @@ class FileIndexer:
             'name_desc': 'name DESC',
             'size_asc': 'size ASC',
             'size_desc': 'size DESC',
-            'modified_desc': 'modifiedTime DESC',
-            'modified_asc': 'modifiedTime ASC'
+            'created_desc': 'createdTime DESC',
+            'created_asc': 'createdTime ASC'
         }
         order_by_clause = sort_map.get(sort_by, 'name ASC')
         files_where_clauses = []
