@@ -21,8 +21,10 @@
 
 **Tarefas:**
  - [x] Bug: arquivos locais não apareciam após sincronização, só após reiniciar o app
- - [ ] Corrigir casos de data N/A no banco de dados (garantir datas válidas para todos os arquivos)
- - [ ] Adicionar opção para forçar resincronização local (scan completo manual)
+ - [x] Corrigir casos de data N/A no banco de dados (garantir datas válidas para todos os arquivos)
+ - [x] Adicionar opção para forçar resincronização local (scan completo manual)
+ - [ ] Revisar e corrigir sincronização local para garantir que novas pastas/arquivos sejam detectados corretamente (incrementalmente)
+ - [ ] Adicionar lógica para excluir incrementalmente arquivos deletados localmente durante o rescan
  - [ ] Aprimorar ordenação por data (garantir consistência e usabilidade)
  - [ ] Normalizar acentuação e caracteres especiais em nomes e buscas (ex: "ú", "&")
  - [ ] Implementar menu contextual: abrir no Explorer, copiar caminho (lista e thumbnails)
@@ -32,6 +34,8 @@
 
 **Critério de Sucesso:**
 - Usuário consegue forçar resincronização local facilmente
+- Sincronização incremental detecta corretamente arquivos/pastas novos e removidos
+- Sistema não mantém "arquivos fantasmas" no banco
 - Datas exibidas corretamente e ordenação funcional
 - Menu contextual disponível e funcional
 - Thumbnails para mais tipos de arquivos

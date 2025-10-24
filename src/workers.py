@@ -218,6 +218,8 @@ class LocalScanWorker(QObject):
         conn = open_db_for_thread(self.db_name)
         cursor = conn.cursor()
 
+        found_file_ids = set()
+
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS files (
                 file_id TEXT PRIMARY KEY,

@@ -388,7 +388,7 @@ class FileIndexer:
                 self._paged_cache[cache_key] = []
                 return []
             placeholders = ','.join('?' for _ in file_ids_to_fetch)
-            details_query = f"SELECT file_id, name, path, mimeType, source, description, thumbnailLink, thumbnailPath, size, modifiedTime, parentId, starred FROM files WHERE file_id IN ({placeholders})"
+            details_query = f"SELECT file_id, name, path, mimeType, source, description, thumbnailLink, thumbnailPath, size, modifiedTime, createdTime, parentId, starred FROM files WHERE file_id IN ({placeholders})"
             filter_clauses = []
             filter_params = list(file_ids_to_fetch)
             if extra_filters.get('is_starred'):
@@ -542,8 +542,9 @@ class FileIndexer:
                 'thumbnailPath': row[7],
                 'size': row[8],
                 'modifiedTime': row[9],
-                'parentId': row[10],
-                'starred': bool(row[11]) if len(row) > 11 else False,
+                'createdTime': row[10],
+                'parentId': row[11],
+                'starred': bool(row[12]) if len(row) > 12 else False,
             }
             files.append(file)
         return files

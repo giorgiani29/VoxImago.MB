@@ -5,6 +5,8 @@
 import os
 import sqlite3
 import webbrowser
+import subprocess
+from datetime import datetime
 
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
@@ -26,7 +28,6 @@ from .widgets import OptionsDialog
 from .utils import format_size, get_generic_thumbnail, load_settings, save_settings
 from .utils import is_thumbnail_cached, generate_drive_thumbnail, get_existing_thumbnail_cache_path, generate_local_thumbnail
 from .utils import SETTINGS_FILE as TOKEN_FILE
-from datetime import datetime
 
 SCOPES = ['https://www.googleapis.com/auth/drive.readonly']
 
@@ -200,13 +201,15 @@ class DriveFileGalleryApp(QMainWindow):
         has_saved_config = bool(scan_paths and len(scan_paths) > 0)
         has_saved_auth = os.path.exists('config/token.json')
 
-        if has_saved_config:
-            if self._should_perform_local_scan():
-                self._start_local_scan(scan_paths)
-            else:
-                self.status_bar.showMessage(
-                    "Arquivos locais já indexados recentemente", 3000)
-        else:
+        # Comentado temporariamente - sync manual apenas via botões
+        # if has_saved_config:
+        #     if self._should_perform_local_scan():
+        #         self._start_local_scan(scan_paths)
+        #     else:
+        #         self.status_bar.showMessage(
+        #             "Arquivos locais já indexados recentemente", 3000)
+        # else:
+        if not has_saved_config:
             self.indexer.cursor.execute(
                 "DELETE FROM files WHERE source='local'")
             self.indexer.cursor.execute(
@@ -219,12 +222,13 @@ class DriveFileGalleryApp(QMainWindow):
             self.loading_label.setText("Nenhum arquivo encontrado.")
             self.loading_label.show()
 
-        if has_saved_config and has_saved_auth:
-            self._check_initial_auth()
-        else:
-            self.update_ui_for_auth_state(False)
-            self.auth_status_label.setText("Clique em Login para começar")
-            self.load_next_batch()
+        # Comentado temporariamente - auth manual apenas via botão login
+        # if has_saved_config and has_saved_auth:
+        #     self._check_initial_auth()
+        # else:
+        self.update_ui_for_auth_state(False)
+        self.auth_status_label.setText("Clique em Login para começar")
+        self.load_next_batch()
 
         self.extension_combo.setCurrentIndex(0)
 
@@ -408,12 +412,11 @@ class DriveFileGalleryApp(QMainWindow):
         self.tools_menu = QMenu("Ferramentas", self)
 
         self.tools_menu.addAction("Pastas Locais", self._show_scan_options)
+        self.tools_menu.addAction("Selecionar Pastas do Drive", self._show_drive_folder_selection)
         self.tools_menu.addAction("Atualizar Drive", self._start_drive_sync)
-        self.tools_menu.addAction(
-            "Selecionar Pastas do Drive", self._show_drive_folder_selection)
-        self.tools_menu.addAction(
-            "Reindexar Arquivos Locais", self._reindex_local_files)
+        self.tools_menu.addAction("Reindexar Arquivos Locais", self._reindex_local_files)
         self.tools_menu.addAction("Limpar Cache", self.clear_thumbnail_cache)
+        self.tools_menu.addAction("Forçar Rescan Local", self.force_rescan_local)
         self.explorer_action = QAction("Explorer Local", self)
         self.explorer_action.setCheckable(True)
         self.explorer_action.setChecked(self.explorer_special_active)
@@ -1182,14 +1185,54 @@ class DriveFileGalleryApp(QMainWindow):
 
             self.load_next_batch()
 
-    def _start_local_scan(self, paths_to_scan):
+    def force_rescan_local(self):
+        if self.local_scan_thread and self.local_scan_thread.isRunning():
+            QMessageBox.warning(
+                self, "Aviso", "Aguarde a conclusão do escaneamento local.")
+            return
+
+        dialog = OptionsDialog(self)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            selected_paths = dialog.get_selected_paths()
+            show_drive_metadata = dialog.get_show_drive_metadata()
+            settings = load_settings()
+            settings['scan_paths'] = selected_paths
+            settings['show_drive_metadata'] = show_drive_metadata
+            save_settings(settings)
+
+            self.show_drive_metadata = show_drive_metadata
+
+            if show_drive_metadata and self.is_authenticated:
+                self._start_drive_sync()
+
+            self.current_view = 'local'
+            self.current_folder_id = None
+            self.clear_display()
+            self.all_files_loaded = False
+            self.current_page = 0
+
+            if selected_paths:
+                self._start_local_scan(selected_paths, force_sync=True)
+            else:
+                self.indexer.cursor.execute(
+                    "DELETE FROM files WHERE source='local'")
+                self.indexer.cursor.execute(
+                    "DELETE FROM search_index WHERE source='local'")
+                self.indexer.conn.commit()
+                self.loading_label.setText("Nenhum arquivo encontrado.")
+                self.loading_label.show()
+                self.all_files_loaded = True
+
+            self.load_next_batch()
+
+    def _start_local_scan(self, paths_to_scan, force_sync=False):
         self.progress_bar.setVisible(True)
         self.progress_bar.setRange(0, 0)
         self.all_loaded_label.hide()
 
         self.local_scan_thread = QThread()
         self.local_scan_worker = LocalScanWorker(
-            db_name=self.indexer.db_name, scan_path=paths_to_scan, force_sync=False)
+            db_name=self.indexer.db_name, scan_path=paths_to_scan, force_sync=force_sync)
         self.local_scan_worker.moveToThread(self.local_scan_thread)
 
         self.local_scan_worker.finished.connect(self.on_local_scan_finished)
@@ -1230,7 +1273,8 @@ class DriveFileGalleryApp(QMainWindow):
         if hasattr(self.indexer, '_paged_cache'):
             self.indexer._paged_cache.clear()
 
-        self.apply_advanced_filters()  # isso faz a load_next_batch de novo e faz com que funcione
+        # isso faz a load_next_batch de novo e faz com que funcione
+        self.apply_advanced_filters()
 
         print("✅ Scan local concluído - verificando se deve iniciar Drive sync")
 
@@ -2191,8 +2235,6 @@ class FileDetailsPanel(QFrame):
         self.thumbnail_label.setPixmap(get_generic_thumbnail(
             file_item.get('mimeType'), size=(400, 400)))
 
-        thumbnail_path = file_item.get('thumbnailPath')
-        thumbnail_link = file_item.get('thumbnailLink')
         mime = file_item.get('mimeType', '')
         local_path = file_item.get('path')
 
@@ -2253,10 +2295,8 @@ class FileDetailsPanel(QFrame):
             if sys.platform == "win32":
                 os.startfile(folder)
             elif sys.platform == "darwin":
-                import subprocess
                 subprocess.Popen(["open", folder])
             else:
-                import subprocess
                 subprocess.Popen(["xdg-open", folder])
         except Exception as e:
             QMessageBox.critical(self, "Erro ao abrir pasta",
