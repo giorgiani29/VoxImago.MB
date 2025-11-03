@@ -25,12 +25,14 @@
  - [x] Adicionar opção para forçar resincronização local (scan completo manual)
  - [ ] Revisar e corrigir sincronização local para garantir que novas pastas/arquivos sejam detectados corretamente (incrementalmente)
  - [ ] Adicionar lógica para excluir incrementalmente arquivos deletados localmente durante o rescan
- - [ ] Aprimorar ordenação por data (garantir consistência e usabilidade)
+ - [x] Aprimorar ordenação por data (garantir consistência e usabilidade)
+ - [x] Garantir ordenação correta por tipo de arquivo (mesma abordagem da ordenação por data)
  - [ ] Normalizar acentuação e caracteres especiais em nomes e buscas (ex: "ú", "&")
  - [ ] Implementar menu contextual: abrir no Explorer, copiar caminho (lista e thumbnails)
- - [ ] Gerar thumbnails para arquivos RAW e vídeos, ou exibir ícone padrão
+ - [x] Gerar thumbnails para arquivos RAW e vídeos, ou exibir ícone padrão
  - [ ] Melhorar feedback e fluxo do token de autenticação (login/logout, expiração)
  - [ ] Revisar e aprimorar a UI conforme necessidades identificadas
+ - [ ] Implementar busca híbrida para permitir encontrar tags curtas e símbolos (ex: <3, &boa, #a, @b)
 
 **Critério de Sucesso:**
 - Usuário consegue forçar resincronização local facilmente
@@ -46,7 +48,7 @@
 
 ---
 
-## segunda-feira (27/10) - Foco em Robustez e Rollback
+## segunda-feira (10/11) - Foco em Robustez e Rollback
 - [ ] Implementar e testar rollback completo para operações críticas
 - [ ] Adicionar testes automatizados para rollback durante fusão de metadados e deletes em lote
 - [ ] Documentar o mecanismo de transações no código

@@ -312,6 +312,26 @@ class FileIndexer:
                 where_clauses.append("mimeType != 'folder'")
                 where_clauses.append(
                     "mimeType != 'application/vnd.google-apps.folder'")
+
+            if 'category' in advanced_filters and advanced_filters['category']:
+                category = advanced_filters['category']
+                if category != '':
+                    category_extensions = {
+                        'images': ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.svg', '.ico', '.tiff', '.heic', '.arw', '.cr2', '.nef', '.dng', '.raf', '.orf', '.srw'],
+                        'videos': ['.mp4', '.avi', '.mov', '.wmv', '.flv', '.mkv', '.webm', '.m4v', '.3gp'],
+                        'documents': ['.pdf', '.doc', '.docx', '.txt', '.rtf', '.odt', '.xls', '.xlsx', '.ppt', '.pptx'],
+                        'audios': ['.mp3', '.wav', '.flac', '.aac', '.ogg', '.wma', '.m4a'],
+                        'others': []
+                    }
+                    if category in category_extensions and category != 'others':
+                        extensions = category_extensions[category]
+                        ext_conditions = []
+                        for ext in extensions:
+                            ext_conditions.append("name LIKE ?")
+                            params.append(f"%{ext}")
+                        if ext_conditions:
+                            where_clauses.append(
+                                f"({' OR '.join(ext_conditions)})")
         query = "SELECT COUNT(*) FROM files"
         if where_clauses:
             query += " WHERE " + " AND ".join(where_clauses)
@@ -371,11 +391,11 @@ class FileIndexer:
                 self._paged_cache[cache_key] = []
                 return []
             if explorer_special:
-                query = f"SELECT DISTINCT file_id FROM search_index WHERE search_index MATCH ? AND source = 'local' ORDER BY rank LIMIT ? OFFSET ?"
+                query = f"SELECT DISTINCT file_id FROM search_index WHERE search_index MATCH ? AND source = 'local' ORDER BY rank"
             else:
-                query = f"SELECT DISTINCT file_id FROM search_index WHERE search_index MATCH ? ORDER BY rank LIMIT ? OFFSET ?"
+                query = f"SELECT DISTINCT file_id FROM search_index WHERE search_index MATCH ? ORDER BY rank"
             try:
-                self.cursor.execute(query, (fts_query, page_size, offset))
+                self.cursor.execute(query, (fts_query,))
                 print(f"Query FTS: {fts_query}")
                 file_ids_to_fetch = [row[0] for row in self.cursor.fetchall()]
                 print(f"Resultados FTS: {file_ids_to_fetch}")
@@ -401,14 +421,80 @@ class FileIndexer:
                 filter_clauses.append("createdTime >= ?")
                 filter_params.append(
                     int(time.mktime(extra_filters['created_after'].timetuple())))
+
+            if advanced_filters:
+                if advanced_filters.get('category'):
+                    category = advanced_filters['category']
+                    if category != '':
+                        category_extensions = {
+                            'images': ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.svg', '.ico', '.tiff', '.heic', '.arw', '.cr2', '.nef', '.dng', '.raf', '.orf', '.srw'],
+                            'videos': ['.mp4', '.avi', '.mov', '.wmv', '.flv', '.mkv', '.webm', '.m4v', '.3gp'],
+                            'documents': ['.pdf', '.doc', '.docx', '.txt', '.rtf', '.odt', '.xls', '.xlsx', '.ppt', '.pptx'],
+                            'audios': ['.mp3', '.wav', '.flac', '.aac', '.ogg', '.wma', '.m4a'],
+                            'others': []
+                        }
+                        if category in category_extensions and category != 'others':
+                            extensions = category_extensions[category]
+                            ext_conditions = []
+                            for ext in extensions:
+                                ext_conditions.append("name LIKE ?")
+                                filter_params.append(f"%{ext}")
+                            if ext_conditions:
+                                filter_clauses.append(
+                                    f"({' OR '.join(ext_conditions)})")
+
+                if advanced_filters.get('extension'):
+                    filter_clauses.append("name LIKE ?")
+                    filter_params.append(f"%{advanced_filters['extension']}")
+                    filter_clauses.append("mimeType != 'folder'")
+                    filter_clauses.append(
+                        "mimeType != 'application/vnd.google-apps.folder'")
+
+                if advanced_filters.get('is_starred'):
+                    filter_clauses.append("starred = 1")
+
+                if advanced_filters.get('created_before'):
+                    filter_clauses.append("createdTime <= ?")
+                    filter_params.append(
+                        int(time.mktime(advanced_filters['created_before'].timetuple())))
+
+                if advanced_filters.get('created_after'):
+                    filter_clauses.append("createdTime >= ?")
+                    filter_params.append(
+                        int(time.mktime(advanced_filters['created_after'].timetuple())))
+
             if filter_clauses:
                 details_query += " AND " + " AND ".join(filter_clauses)
-            details_query += f" ORDER BY {order_by_clause}"
             self.cursor.execute(details_query, filter_params)
             rows = self.cursor.fetchall()
             result = self._build_file_objects_from_search(rows)
-            self._paged_cache[cache_key] = result
-            return result
+            if sort_by == 'name_asc':
+                result = sorted(
+                    result, key=lambda x: x.get('name', '').lower())
+            elif sort_by == 'name_desc':
+                result = sorted(result, key=lambda x: x.get(
+                    'name', '').lower(), reverse=True)
+            elif sort_by == 'created_desc':
+                result = sorted(result, key=lambda x: x.get(
+                    'createdTime', 0), reverse=True)
+            elif sort_by == 'created_asc':
+                result = sorted(result, key=lambda x: x.get('createdTime', 0))
+            elif sort_by == 'modified_desc':
+                result = sorted(result, key=lambda x: x.get(
+                    'modifiedTime', 0), reverse=True)
+            elif sort_by == 'modified_asc':
+                result = sorted(result, key=lambda x: x.get('modifiedTime', 0))
+            elif sort_by == 'size_asc':
+                result = sorted(result, key=lambda x: x.get('size', 0))
+            elif sort_by == 'size_desc':
+                result = sorted(result, key=lambda x: x.get(
+                    'size', 0), reverse=True)
+            # Paginar em Python
+            start = offset
+            end = offset + page_size
+            paged_result = result[start:end]
+            self._paged_cache[cache_key] = paged_result
+            return paged_result
         else:
             if source:
                 files_where_clauses.append("source=?")

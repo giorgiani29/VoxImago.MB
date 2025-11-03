@@ -412,11 +412,14 @@ class DriveFileGalleryApp(QMainWindow):
         self.tools_menu = QMenu("Ferramentas", self)
 
         self.tools_menu.addAction("Pastas Locais", self._show_scan_options)
-        self.tools_menu.addAction("Selecionar Pastas do Drive", self._show_drive_folder_selection)
+        self.tools_menu.addAction(
+            "Selecionar Pastas do Drive", self._show_drive_folder_selection)
         self.tools_menu.addAction("Atualizar Drive", self._start_drive_sync)
-        self.tools_menu.addAction("Reindexar Arquivos Locais", self._reindex_local_files)
+        self.tools_menu.addAction(
+            "Reindexar Arquivos Locais", self._reindex_local_files)
         self.tools_menu.addAction("Limpar Cache", self.clear_thumbnail_cache)
-        self.tools_menu.addAction("Forçar Rescan Local", self.force_rescan_local)
+        self.tools_menu.addAction(
+            "Forçar Rescan Local", self.force_rescan_local)
         self.explorer_action = QAction("Explorer Local", self)
         self.explorer_action.setCheckable(True)
         self.explorer_action.setChecked(self.explorer_special_active)
@@ -1040,7 +1043,7 @@ class DriveFileGalleryApp(QMainWindow):
     def update_filter_buttons(self):
         is_searching = bool(self.search_term)
         self.filter_combo.setEnabled(not is_searching)
-        self.sort_combo.setEnabled(not is_searching)
+        self.sort_combo.setEnabled(True)
 
     def change_filter_type_combo(self, index):
         self.current_filter = self.filter_combo.itemData(index)
@@ -1948,7 +1951,26 @@ class DriveFileGalleryApp(QMainWindow):
                     drive_files = self.indexer.load_files_paged(
                         'drive', self.current_page, self.page_size, None, self.current_sort, filter_type, None, self.advanced_filters, explorer_special=self.explorer_special_active
                     )
-                return local_files + drive_files
+                all_files = local_files + drive_files
+                if self.current_sort == "created_desc":
+                    all_files = sorted(all_files, key=lambda x: x.get(
+                        "createdTime", 0), reverse=True)
+                elif self.current_sort == "created_asc":
+                    all_files = sorted(
+                        all_files, key=lambda x: x.get("createdTime", 0))
+                elif self.current_sort == "modified_desc":
+                    all_files = sorted(all_files, key=lambda x: x.get(
+                        "modifiedTime", 0), reverse=True)
+                elif self.current_sort == "modified_asc":
+                    all_files = sorted(
+                        all_files, key=lambda x: x.get("modifiedTime", 0))
+                elif self.current_sort == "name_asc":
+                    all_files = sorted(
+                        all_files, key=lambda x: x.get("name", "").lower())
+                elif self.current_sort == "name_desc":
+                    all_files = sorted(all_files, key=lambda x: x.get(
+                        "name", "").lower(), reverse=True)
+                return all_files
             else:
                 local_files = self.indexer.load_files_paged(
                     'local', self.current_page, self.page_size, None, self.current_sort, filter_type, None, self.advanced_filters, explorer_special=self.explorer_special_active
@@ -1958,7 +1980,26 @@ class DriveFileGalleryApp(QMainWindow):
                     drive_files = self.indexer.load_files_paged(
                         'drive', self.current_page, self.page_size, None, self.current_sort, filter_type, None, self.advanced_filters, explorer_special=self.explorer_special_active
                     )
-                return local_files + drive_files
+                all_files = local_files + drive_files
+                if self.current_sort == "created_desc":
+                    all_files = sorted(all_files, key=lambda x: x.get(
+                        "createdTime", 0), reverse=True)
+                elif self.current_sort == "created_asc":
+                    all_files = sorted(
+                        all_files, key=lambda x: x.get("createdTime", 0))
+                elif self.current_sort == "modified_desc":
+                    all_files = sorted(all_files, key=lambda x: x.get(
+                        "modifiedTime", 0), reverse=True)
+                elif self.current_sort == "modified_asc":
+                    all_files = sorted(
+                        all_files, key=lambda x: x.get("modifiedTime", 0))
+                elif self.current_sort == "name_asc":
+                    all_files = sorted(
+                        all_files, key=lambda x: x.get("name", "").lower())
+                elif self.current_sort == "name_desc":
+                    all_files = sorted(all_files, key=lambda x: x.get(
+                        "name", "").lower(), reverse=True)
+                return all_files
         else:
             if self.advanced_filters.get('extension'):
                 filter_type = 'all'
@@ -1969,6 +2010,21 @@ class DriveFileGalleryApp(QMainWindow):
             if not self.show_drive_metadata:
                 files = [f for f in files if not (
                     f.get('source') == 'drive' and not f.get('path'))]
+            if self.current_sort == "created_desc":
+                files = sorted(files, key=lambda x: x.get(
+                    "createdTime", 0), reverse=True)
+            elif self.current_sort == "created_asc":
+                files = sorted(files, key=lambda x: x.get("createdTime", 0))
+            elif self.current_sort == "modified_desc":
+                files = sorted(files, key=lambda x: x.get(
+                    "modifiedTime", 0), reverse=True)
+            elif self.current_sort == "modified_asc":
+                files = sorted(files, key=lambda x: x.get("modifiedTime", 0))
+            elif self.current_sort == "name_asc":
+                files = sorted(files, key=lambda x: x.get("name", "").lower())
+            elif self.current_sort == "name_desc":
+                files = sorted(files, key=lambda x: x.get(
+                    "name", "").lower(), reverse=True)
             return files
 
     def _add_thumbnail_widgets(self, files_to_add):
