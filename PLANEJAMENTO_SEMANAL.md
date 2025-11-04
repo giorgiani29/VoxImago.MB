@@ -27,18 +27,17 @@
 
 **Tarefas:**
 
-- [ ] Corrigir exibição do caminho do arquivo no painel de preview para usar barras consistentes
-- [ ] Normalizar acentuação e caracteres especiais em nomes e buscas (ex: "ú", "&")
-- [ ] Implementar menu contextual: abrir no Explorer, copiar caminho (lista e thumbnails)
-
+- [x] Corrigir exibição do caminho do arquivo no painel de preview para usar barras consistentes
+- [x] Normalizar acentuação e caracteres especiais em nomes e buscas (ex: "ú", "&")
+- [x] Implementar menu contextual: abrir no Explorer, copiar caminho (lista e thumbnails)
 - [ ] Implementar padrão de data baseado no diretório raiz "Banco de Imagens" (ano) e considerar a mais antiga entre data de criação e modificação
-- [ ] Revisar e aprimorar a UI conforme necessidades identificadas
 - [ ] Melhorar feedback e fluxo do token de autenticação (login/logout, expiração)
+- [ ] Modularizar eventos de seleção e duplo clique da lista de arquivos (sinais customizados no FileListView)
 - [ ] Implementar busca híbrida para permitir encontrar tags curtas e símbolos (ex: <3, &boa, #a, @b)
-
 - [ ] Revisar e corrigir sincronização local para garantir que novas pastas/arquivos sejam detectados corretamente (incrementalmente)
 - [ ] Adicionar lógica para excluir incrementalmente arquivos deletados localmente durante o rescan
 - [ ] Investigar e aprimorar suporte a thumbnails HEIC e RAW (especialmente ARW, CR2, etc.) no Windows
+- [ ] Revisar e aprimorar a UI conforme necessidades identificadas
 
 **Critério de Sucesso:**
 - Usuário consegue forçar resincronização local facilmente

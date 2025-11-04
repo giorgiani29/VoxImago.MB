@@ -12,7 +12,3 @@ numpy>=1.21
 imageio>=2.9
 Pillow>=9.0
 pillow-heif>=0.12
-rawpy>=0.18
-numpy>=1.21
-imageio>=2.9
-Pillow>=9.0

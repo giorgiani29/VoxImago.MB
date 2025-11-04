@@ -165,6 +165,5 @@ class CPUProfiler:
 
         return result
 
-
 cpu_profiler = CPUProfiler()
 memory_profiler = MemoryProfiler()
