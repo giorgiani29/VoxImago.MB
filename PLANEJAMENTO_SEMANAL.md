@@ -14,25 +14,31 @@
 - Melhorar qualidade e tamanho dos thumbnails (visualização maior e mais nítida)
 - Implementar Grid View para exibição dos arquivos
 - Atualizar RELATORIO_TESTES.md com as melhorias aplicadas
+- Bug: arquivos locais não apareciam após sincronização, só após reiniciar o app
+- Corrigir casos de data N/A no banco de dados (garantir datas válidas para todos os arquivos)
+- Adicionar opção para forçar resincronização local (scan completo manual)
+- Aprimorar ordenação por data (garantir consistência e usabilidade)
+- Garantir ordenação correta por tipo de arquivo (mesma abordagem da ordenação por data)
+- Gerar thumbnails para arquivos RAW e vídeos, ou exibir ícone padrão
 
 ---
 
 ### Prioridade Máxima: Aprimorar Sistema de Ordenação por Datas
 
 **Tarefas:**
- - [x] Bug: arquivos locais não apareciam após sincronização, só após reiniciar o app
- - [x] Corrigir casos de data N/A no banco de dados (garantir datas válidas para todos os arquivos)
- - [x] Adicionar opção para forçar resincronização local (scan completo manual)
- - [ ] Revisar e corrigir sincronização local para garantir que novas pastas/arquivos sejam detectados corretamente (incrementalmente)
- - [ ] Adicionar lógica para excluir incrementalmente arquivos deletados localmente durante o rescan
- - [x] Aprimorar ordenação por data (garantir consistência e usabilidade)
- - [x] Garantir ordenação correta por tipo de arquivo (mesma abordagem da ordenação por data)
- - [ ] Normalizar acentuação e caracteres especiais em nomes e buscas (ex: "ú", "&")
- - [ ] Implementar menu contextual: abrir no Explorer, copiar caminho (lista e thumbnails)
- - [x] Gerar thumbnails para arquivos RAW e vídeos, ou exibir ícone padrão
- - [ ] Melhorar feedback e fluxo do token de autenticação (login/logout, expiração)
- - [ ] Revisar e aprimorar a UI conforme necessidades identificadas
- - [ ] Implementar busca híbrida para permitir encontrar tags curtas e símbolos (ex: <3, &boa, #a, @b)
+
+- [ ] Corrigir exibição do caminho do arquivo no painel de preview para usar barras consistentes
+- [ ] Normalizar acentuação e caracteres especiais em nomes e buscas (ex: "ú", "&")
+- [ ] Implementar menu contextual: abrir no Explorer, copiar caminho (lista e thumbnails)
+
+- [ ] Implementar padrão de data baseado no diretório raiz "Banco de Imagens" (ano) e considerar a mais antiga entre data de criação e modificação
+- [ ] Revisar e aprimorar a UI conforme necessidades identificadas
+- [ ] Melhorar feedback e fluxo do token de autenticação (login/logout, expiração)
+- [ ] Implementar busca híbrida para permitir encontrar tags curtas e símbolos (ex: <3, &boa, #a, @b)
+
+- [ ] Revisar e corrigir sincronização local para garantir que novas pastas/arquivos sejam detectados corretamente (incrementalmente)
+- [ ] Adicionar lógica para excluir incrementalmente arquivos deletados localmente durante o rescan
+- [ ] Investigar e aprimorar suporte a thumbnails HEIC e RAW (especialmente ARW, CR2, etc.) no Windows
 
 **Critério de Sucesso:**
 - Usuário consegue forçar resincronização local facilmente
