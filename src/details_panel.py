@@ -12,7 +12,8 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtGui import QPixmap, QFont
 from PyQt6.QtCore import Qt
-from .utils import format_size, get_generic_thumbnail, get_existing_thumbnail_cache_path, is_thumbnail_cached
+from .utils import format_size
+from .thumbnails import ThumbnailCache, ThumbnailManager
 
 
 class FileDetailsPanel(QFrame):
@@ -145,15 +146,16 @@ class FileDetailsPanel(QFrame):
         else:
             self.open_drive_button.setVisible(False)
 
-        self.thumbnail_label.setPixmap(get_generic_thumbnail(
+        self.thumbnail_label.setPixmap(ThumbnailManager.get_generic_thumbnail(
             file_item.get('mimeType'), size=(400, 400)))
 
         mime = file_item.get('mimeType', '')
         local_path = file_item.get('path')
 
         try:
-            if is_thumbnail_cached(file_item):
-                cached = get_existing_thumbnail_cache_path(file_item)
+            if ThumbnailCache.is_thumbnail_cached(file_item):
+                cached = ThumbnailCache.get_existing_thumbnail_cache_path(
+                    file_item)
                 pixmap = QPixmap(cached)
                 if not pixmap.isNull():
                     self.thumbnail_label.setPixmap(pixmap.scaled(
@@ -168,8 +170,9 @@ class FileDetailsPanel(QFrame):
 
         if local_path and os.path.exists(local_path) and mime.startswith('image/'):
             try:
-                if is_thumbnail_cached(file_item):
-                    cached = get_existing_thumbnail_cache_path(file_item)
+                if ThumbnailCache.is_thumbnail_cached(file_item):
+                    cached = ThumbnailCache.get_existing_thumbnail_cache_path(
+                        file_item)
                     pixmap = QPixmap(cached)
                     if not pixmap.isNull():
                         self.thumbnail_label.setPixmap(pixmap.scaled(
@@ -184,7 +187,7 @@ class FileDetailsPanel(QFrame):
                 pass
         elif local_path and os.path.exists(local_path):
             self.thumbnail_label.setPixmap(
-                get_generic_thumbnail(mime, size=(400, 400)))
+                ThumbnailManager.get_generic_thumbnail(mime, size=(400, 400)))
             self.show()
         else:
             self.show()
@@ -243,10 +246,10 @@ class FileDetailsPanel(QFrame):
                 conn.commit()
                 conn.close()
             else:
-                self.thumbnail_label.setPixmap(get_generic_thumbnail(
+                self.thumbnail_label.setPixmap(ThumbnailManager.get_generic_thumbnail(
                     self.current_file_item.get('mimeType'), size=(96, 96)))
         else:
-            self.thumbnail_label.setPixmap(get_generic_thumbnail(
+            self.thumbnail_label.setPixmap(ThumbnailManager.get_generic_thumbnail(
                 self.current_file_item.get('mimeType'), size=(96, 96)))
 
         if self.thumbnail_worker and self.thumbnail_thread:

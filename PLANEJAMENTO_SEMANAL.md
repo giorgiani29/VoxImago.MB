@@ -30,7 +30,7 @@
 - [x] Corrigir exibição do caminho do arquivo no painel de preview para usar barras consistentes
 - [x] Normalizar acentuação e caracteres especiais em nomes e buscas (ex: "ú", "&")
 - [x] Implementar menu contextual: abrir no Explorer, copiar caminho (lista e thumbnails)
-- [ ] Implementar padrão de data baseado no diretório raiz "Banco de Imagens" (ano) e considerar a mais antiga entre data de criação e modificação
+- [x] Implementar padrão de data baseado no diretório raiz "Banco de Imagens" (ano) e considerar a mais antiga entre data de criação e modificação
 - [ ] Melhorar feedback e fluxo do token de autenticação (login/logout, expiração)
 - [ ] Modularizar eventos de seleção e duplo clique da lista de arquivos (sinais customizados no FileListView)
 - [ ] Implementar busca híbrida para permitir encontrar tags curtas e símbolos (ex: <3, &boa, #a, @b)

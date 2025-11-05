@@ -12,7 +12,7 @@ import os
 import logging
 from datetime import datetime, timezone
 from .database import open_db_for_thread, normalize_text
-from .utils import get_thumbnail_cache_key
+from .thumbnails import ThumbnailCache
 from googleapiclient.http import MediaIoBaseDownload
 from PyQt6.QtCore import QObject, pyqtSignal, QCoreApplication
 from google.oauth2.credentials import Credentials
@@ -112,7 +112,7 @@ class ThumbnailWorker(QObject):
 
     def run(self):
         try:
-            cache_key = get_thumbnail_cache_key(self.file_item)
+            cache_key = ThumbnailCache.get_thumbnail_cache_key(self.file_item)
             thumbnail_path = os.path.join(
                 THUMBNAIL_CACHE_DIR, f"{cache_key}.jpg")
             if os.path.exists(thumbnail_path):
@@ -301,6 +301,13 @@ class LocalScanWorker(QObject):
                     try:
                         modified = int(os.path.getmtime(dir_path))
                         created = int(os.path.getctime(dir_path))
+                        data_mais_antiga = min(created, modified)
+                        ano_caminho = extrair_ano_banco_imagens(dir_path)
+                        if ano_caminho and ano_caminho < datetime.fromtimestamp(data_mais_antiga).year:
+                            data_final = int(
+                                datetime(ano_caminho, 1, 1, tzinfo=timezone.utc).timestamp())
+                        else:
+                            data_final = data_mais_antiga
                         if modified < 0:
                             logging.warning(
                                 f"Aviso: Tempo de modificação negativo para {dir_path}")
@@ -321,7 +328,7 @@ class LocalScanWorker(QObject):
                         'thumbnailPath': '',
                         'size': 0,
                         'modifiedTime': modified,
-                        'createdTime': created,
+                        'createdTime': data_final,
                         'parentId': parent_id,
                     }
                     batch_files.append((
@@ -381,6 +388,13 @@ class LocalScanWorker(QObject):
                         size = os.path.getsize(file_path)
                         modified = int(os.path.getmtime(file_path))
                         created = int(os.path.getctime(file_path))
+                        data_mais_antiga = min(created, modified)
+                        ano_caminho = extrair_ano_banco_imagens(file_path)
+                        if ano_caminho and ano_caminho < datetime.fromtimestamp(data_mais_antiga).year:
+                            data_final = int(
+                                datetime(ano_caminho, 1, 1, tzinfo=timezone.utc).timestamp())
+                        else:
+                            data_final = data_mais_antiga
                         if modified < 0:
                             logging.warning(
                                 "Aviso: Tempo de modificação negativo para %s", file_path)
@@ -403,7 +417,7 @@ class LocalScanWorker(QObject):
                         'thumbnailPath': '',
                         'size': size,
                         'modifiedTime': modified,
-                        'createdTime': created,
+                        'createdTime': data_final,
                         'parentId': parent_id,
                     }
                     batch_files.append((
@@ -833,3 +847,13 @@ class DriveSyncWorker(QObject):
     def update_last_sync_time(self):
         with open('data/last_sync.txt', 'w') as f:
             f.write(datetime.utcnow().isoformat() + 'Z')
+
+
+def extrair_ano_banco_imagens(path):
+    partes = os.path.normpath(path).split(os.sep)
+    try:
+        idx = partes.index('Banco de Imagens')
+        ano = int(partes[idx + 1])
+        return ano
+    except (ValueError, IndexError):
+        return None

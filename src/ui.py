@@ -13,7 +13,7 @@ from .profiling import memory_profiler, cpu_profiler
 
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QHBoxLayout, QLabel, QLineEdit, QPushButton,
-    QMessageBox, QFrame, QDialog, QCheckBox, QDialogButtonBox, QProgressBar, QComboBox, QCompleter, 
+    QMessageBox, QFrame, QDialog, QCheckBox, QDialogButtonBox, QProgressBar, QComboBox, QCompleter,
     QSplitter, QDateEdit, QVBoxLayout, QProgressDialog, QListView, QSystemTrayIcon, QMenu,
     QToolButton, QAbstractItemView
 )
@@ -23,11 +23,12 @@ from PyQt6.QtCore import Qt, QTimer, QStringListModel, QDate, QThread, pyqtSigna
 from .list_view import FileListView
 from .database import FileIndexer, normalize_text
 from .widgets import OptionsDialog
-from .utils import  load_settings, save_settings
-from .utils import is_thumbnail_cached, generate_drive_thumbnail, get_existing_thumbnail_cache_path, generate_local_thumbnail
+from .utils import load_settings, save_settings
+from .thumbnails import ThumbnailCache, ThumbnailManager
 from .utils import SETTINGS_FILE as TOKEN_FILE
 
 SCOPES = ['https://www.googleapis.com/auth/drive.readonly']
+
 
 class ServiceStatusDialog(QDialog):
     def __init__(self, status_text, show_progress=False, parent=None):
@@ -56,6 +57,7 @@ class ServiceStatusDialog(QDialog):
 
     def update_status(self, new_text):
         self.text_label.setText(new_text)
+
 
 class DriveFileGalleryApp(QMainWindow):
     thumbnail_generated = pyqtSignal(str)
@@ -551,7 +553,7 @@ class DriveFileGalleryApp(QMainWindow):
         self.splitter = QSplitter(Qt.Orientation.Horizontal)
 
         from .file_list_model import FileListModel
-        from .file_list_delegate import FileListDelegate
+        from .thumbnails import FileListDelegate
 
         self.file_list_view = FileListView()
         self.file_list_model = FileListModel([])
@@ -809,7 +811,7 @@ class DriveFileGalleryApp(QMainWindow):
         try:
             if not file_item:
                 return
-            if is_thumbnail_cached(file_item):
+            if ThumbnailCache.is_thumbnail_cached(file_item):
                 return
             key = file_item.get('id') or file_item.get('path')
             if not key or key in self._pending_thumbs:
@@ -827,9 +829,8 @@ class DriveFileGalleryApp(QMainWindow):
                     try:
                         src = (self.item.get('source') or '').lower()
                         if src == 'local':
-                            generate_local_thumbnail(self.item, base_size=256)
-                        elif src == 'drive':
-                            generate_drive_thumbnail(self.item, base_size=256)
+                            ThumbnailManager.generate_local_thumbnail(
+                                self.item, size=(256, 256))
                     except Exception:
                         pass
                     finally:
@@ -862,7 +863,7 @@ class DriveFileGalleryApp(QMainWindow):
             curr_key = curr.get('id') or curr.get('path')
             if curr_key != file_key:
                 return
-            if is_thumbnail_cached(curr):
+            if ThumbnailCache.is_thumbnail_cached(curr):
                 self.details_panel.update_details(curr)
         except Exception:
             pass
@@ -2111,6 +2112,7 @@ class DriveFileGalleryApp(QMainWindow):
         row = self.indexer.cursor.fetchone()
         parent_id = row[0] if row else None
         self.navigate_to_folder(parent_id)
+
 
 class ClickableLabel(QLabel):
     clicked = pyqtSignal()
