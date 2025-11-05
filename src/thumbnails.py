@@ -11,6 +11,7 @@ from PyQt6.QtCore import QRect
 from PyQt6.QtCore import Qt, QSize, pyqtSignal
 from PyQt6.QtGui import QPixmap, QFont, QPainter, QBrush, QColor, QImage
 from PyQt6.QtWidgets import QStyledItemDelegate, QStyle
+from PyQt6.QtCore import QObject
 import os
 import hashlib
 import mimetypes
@@ -23,6 +24,36 @@ except ImportError:
     pass
 
 THUMBNAIL_CACHE_DIR = 'assets/thumbnail_cache'
+
+
+class ThumbnailWorker(QObject):
+    finished = pyqtSignal(bytes, str)
+
+    def __init__(self, thumbnail_url, file_item, parent=None):
+        super().__init__(parent)
+        self.thumbnail_url = thumbnail_url
+        self.file_item = file_item
+        os.makedirs(THUMBNAIL_CACHE_DIR, exist_ok=True)
+
+    def run(self):
+        try:
+            cache_key = ThumbnailCache.get_thumbnail_cache_key(self.file_item)
+            thumbnail_path = os.path.join(
+                THUMBNAIL_CACHE_DIR, f"{cache_key}.jpg")
+            if os.path.exists(thumbnail_path):
+                with open(thumbnail_path, 'rb') as f:
+                    data = f.read()
+                self.finished.emit(data, thumbnail_path)
+                return
+            response = requests.get(self.thumbnail_url)
+            if response.status_code == 200:
+                with open(thumbnail_path, 'wb') as f:
+                    f.write(response.content)
+                self.finished.emit(response.content, thumbnail_path)
+            else:
+                self.finished.emit(b'', '')
+        except Exception:
+            self.finished.emit(b'', '')
 
 
 class FileListDelegate(QStyledItemDelegate):
@@ -152,7 +183,6 @@ class FileListDelegate(QStyledItemDelegate):
             grid_size = parent_view.gridSize()
             return grid_size
         return QSize(option.rect.width(), 60)
-
 
 class ThumbnailManager:
 
@@ -499,7 +529,6 @@ class ThumbnailManager:
             painter.drawRect(0, 0, size[0], size[1])
             painter.end()
             return pixmap
-
 
 class ThumbnailCache:
     @staticmethod

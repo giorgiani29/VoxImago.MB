@@ -8,7 +8,8 @@ import webbrowser
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from google.auth.transport.requests import Request
-from .workers import AuthWorker, LocalScanWorker, DriveSyncWorker
+from .authentication import AuthWorker
+from .workers import LocalScanWorker, DriveSyncWorker
 from .profiling import memory_profiler, cpu_profiler
 
 from PyQt6.QtWidgets import (
@@ -176,13 +177,12 @@ class DriveFileGalleryApp(QMainWindow):
             self.loading_label.setText("Nenhum arquivo encontrado.")
             self.loading_label.show()
 
-        # Comentado temporariamente - auth manual apenas via botão login
-        # if has_saved_config and has_saved_auth:
-        #     self._check_initial_auth()
-        # else:
-        self.update_ui_for_auth_state(False)
-        self.auth_status_label.setText("Clique em Login para começar")
-        self.load_next_batch()
+        if has_saved_auth:
+            self._start_auth(auto=True)
+        else:
+            self.update_ui_for_auth_state(False)
+            self.auth_status_label.setText("Clique em Login para começar")
+            self.load_next_batch()
 
         self.extension_combo.setCurrentIndex(0)
 
@@ -1331,17 +1331,24 @@ class DriveFileGalleryApp(QMainWindow):
             print(f"⚠️ Erro ao verificar timestamp Drive, fazendo sync: {e}")
             self._start_drive_sync()
 
-    def _start_auth(self):
+    def _start_auth(self, auto=False):
         if self.auth_thread and self.auth_thread.isRunning():
             self.status_bar.showMessage(
                 "Processo de login já em andamento...", 5000)
             return
 
-        self.status_bar.showMessage(
-            "Abrindo navegador para autenticação...", 5000)
-        self.progress_bar.setVisible(True)
-        self.progress_bar.setRange(0, 0)
-        self.login_button.setEnabled(False)
+        if not auto:
+            self.status_bar.showMessage(
+                "Abrindo navegador para autenticação...", 5000)
+            self.progress_bar.setVisible(True)
+            self.progress_bar.setRange(0, 0)
+            self.login_button.setEnabled(False)
+        else:
+            self.status_bar.showMessage(
+                "Verificando autenticação automática...", 5000)
+            self.progress_bar.setVisible(True)
+            self.progress_bar.setRange(0, 0)
+            self.login_button.setEnabled(False)
 
         self.auth_thread = QThread()
         self.auth_worker = AuthWorker()
@@ -1357,11 +1364,18 @@ class DriveFileGalleryApp(QMainWindow):
         self.progress_bar.setVisible(False)
         self.login_button.setEnabled(True)
         self.status_bar.showMessage(
-            "Login bem-sucedido. Sincronizando arquivos...", 5000)
+            "Login bem-sucedido.", 5000)
         self.auth_status_label.setText("Logado com Google")
         self.service = build('drive', 'v3', credentials=creds)
         self.update_ui_for_auth_state(True)
-        self._start_drive_sync()
+        # Only auto-sync if user has config
+        settings = load_settings()
+        has_saved_config = bool(settings.get('scan_paths') and len(
+            settings.get('scan_paths', [])) > 0)
+        if has_saved_config:
+            self._start_drive_sync_if_needed()
+        else:
+            self.load_next_batch()
 
         self.auth_thread.quit()
         self.auth_thread.wait()

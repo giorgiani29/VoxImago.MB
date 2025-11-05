@@ -2,26 +2,21 @@
 # Inclui AuthWorker, ThumbnailWorker, DownloadWorker, LocalScanWorker, DriveSyncWorker.
 # Use este arquivo para executar tarefas paralelas e assíncronas no aplicativo.
 
+
 import sys
 import time
 import sqlite3
 import requests
 import os
 import io
-import os
 import logging
 from datetime import datetime, timezone
 from .database import open_db_for_thread, normalize_text
 from .thumbnails import ThumbnailCache
 from googleapiclient.http import MediaIoBaseDownload
 from PyQt6.QtCore import QObject, pyqtSignal, QCoreApplication
-from google.oauth2.credentials import Credentials
-from google_auth_oauthlib.flow import InstalledAppFlow
 from .utils import find_local_matches
 
-SCOPES = ['https://www.googleapis.com/auth/drive.readonly']
-TOKEN_FILE = 'token.json'
-CREDENTIALS_FILE = 'credentials.json'
 
 logging.basicConfig(
     level=logging.INFO,
@@ -30,26 +25,6 @@ logging.basicConfig(
     filename='app.log',
     filemode='a'
 )
-
-
-def _check_initial_auth(self):
-    creds = None
-    if os.path.exists(TOKEN_FILE):
-        try:
-            creds = Credentials.from_authorized_user_file(TOKEN_FILE, SCOPES)
-            if not creds or not creds.valid or not creds.refresh_token or not creds.client_id or not creds.client_secret:
-                raise ValueError("Token inválido ou incompleto.")
-        except Exception:
-            creds = None
-
-    if not creds:
-        flow = InstalledAppFlow.from_client_secrets_file(
-            CREDENTIALS_FILE, SCOPES)
-        creds = flow.run_local_server(port=0)
-        with open(TOKEN_FILE, 'w') as token:
-            token.write(creds.to_json())
-
-    self.creds = creds
 
 
 EXPORT_MIME_TYPES = {
@@ -64,71 +39,6 @@ EXPORT_FILE_EXTENSIONS = {
 }
 
 THUMBNAIL_CACHE_DIR = "assets/thumbnail_cache"
-CREDENTIALS_FILE = "config/credentials.json"
-TOKEN_FILE = "config/token.json"
-
-
-class AuthWorker(QObject):
-    finished = pyqtSignal(object)
-    failed = pyqtSignal(str)
-    authenticated = pyqtSignal(Credentials)
-    auth_failed = pyqtSignal(str)
-
-    def __init__(self, parent=None):
-        super().__init__(parent)
-
-    def run(self):
-        creds = None
-        SCOPES = ['https://www.googleapis.com/auth/drive.readonly']
-
-        if not os.path.exists(CREDENTIALS_FILE):
-            self.auth_failed.emit(
-                f"Erro: Arquivo {CREDENTIALS_FILE} não encontrado. Por favor, adicione-o.")
-            return
-
-        try:
-            flow = InstalledAppFlow.from_client_secrets_file(
-                CREDENTIALS_FILE, SCOPES)
-            creds = flow.run_local_server(
-                port=0, access_type='offline', prompt='consent')
-
-            with open(TOKEN_FILE, 'w') as token:
-                token.write(creds.to_json())
-
-            self.authenticated.emit(creds)
-        except Exception as e:
-            self.auth_failed.emit(
-                f"Erro de autenticação: {e}. Verifique seu arquivo credentials.json.")
-
-
-class ThumbnailWorker(QObject):
-    finished = pyqtSignal(bytes, str)
-
-    def __init__(self, thumbnail_url, file_item, parent=None):
-        super().__init__(parent)
-        self.thumbnail_url = thumbnail_url
-        self.file_item = file_item
-        os.makedirs(THUMBNAIL_CACHE_DIR, exist_ok=True)
-
-    def run(self):
-        try:
-            cache_key = ThumbnailCache.get_thumbnail_cache_key(self.file_item)
-            thumbnail_path = os.path.join(
-                THUMBNAIL_CACHE_DIR, f"{cache_key}.jpg")
-            if os.path.exists(thumbnail_path):
-                with open(thumbnail_path, 'rb') as f:
-                    data = f.read()
-                self.finished.emit(data, thumbnail_path)
-                return
-            response = requests.get(self.thumbnail_url)
-            if response.status_code == 200:
-                with open(thumbnail_path, 'wb') as f:
-                    f.write(response.content)
-                self.finished.emit(response.content, thumbnail_path)
-            else:
-                self.finished.emit(b'', '')
-        except Exception:
-            self.finished.emit(b'', '')
 
 
 class DownloadWorker(QObject):
