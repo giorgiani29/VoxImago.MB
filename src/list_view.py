@@ -2,18 +2,37 @@
 
 import os
 from PyQt6.QtWidgets import QListView, QMenu, QApplication
-from PyQt6.QtCore import Qt, QMimeData
+from PyQt6.QtCore import Qt, QMimeData, pyqtSignal
 from PyQt6.QtGui import QDrag, QCursor
 from PyQt6.QtCore import QUrl
 from PyQt6.QtGui import QDrag
 
 
 class FileListView(QListView):
+    fileSelected = pyqtSignal(object)
+    fileDoubleClicked = pyqtSignal(object)
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.customContextMenuRequested.connect(self.show_context_menu)
         self.drag_start_position = None
+        self.doubleClicked.connect(self._emit_double_click)
+
+    def setModel(self, model):
+        super().setModel(model)
+        if self.selectionModel():
+            self.selectionModel().selectionChanged.connect(self._emit_selection)
+
+    def _emit_selection(self, selected, deselected):
+        indexes = self.selectedIndexes()
+        if indexes:
+            file_item = indexes[0].data(Qt.ItemDataRole.UserRole)
+            self.fileSelected.emit(file_item)
+
+    def _emit_double_click(self, index):
+        file_item = index.data(Qt.ItemDataRole.UserRole)
+        self.fileDoubleClicked.emit(file_item)
 
     def mousePressEvent(self, event):
         self.drag_start_position = event.pos()

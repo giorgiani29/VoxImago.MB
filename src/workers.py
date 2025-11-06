@@ -11,7 +11,8 @@ import os
 import io
 import logging
 from datetime import datetime, timezone
-from .database import open_db_for_thread, normalize_text
+from .database import open_db_for_thread
+from .search import SearchEngine
 from .thumbnails import ThumbnailCache
 from googleapiclient.http import MediaIoBaseDownload
 from PyQt6.QtCore import QObject, pyqtSignal, QCoreApplication
@@ -260,8 +261,9 @@ class LocalScanWorker(QObject):
                     batch_search.append((
                         dir_item['name'],
                         dir_item['description'],
-                        normalize_text(dir_item['name']),
-                        normalize_text(dir_item['description']),
+                        SearchEngine(None).normalize_text(dir_item['name']),
+                        SearchEngine(None).normalize_text(
+                            dir_item['description']),
                         dir_item['id'],
                         dir_item['source']
                     ))
@@ -349,8 +351,9 @@ class LocalScanWorker(QObject):
                     batch_search.append((
                         file_item['name'],
                         file_item['description'],
-                        normalize_text(file_item['name']),
-                        normalize_text(file_item['description']),
+                        SearchEngine(None).normalize_text(file_item['name']),
+                        SearchEngine(None).normalize_text(
+                            file_item['description']),
                         file_item['id'],
                         file_item['source']
                     ))
@@ -680,7 +683,7 @@ class DriveSyncWorker(QObject):
                             )
                             indexer.cursor.execute(
                                 "UPDATE search_index SET description = ?, normalized_description = ? WHERE file_id = ?",
-                                (drive_item['description'], normalize_text(
+                                (drive_item['description'], SearchEngine(None).normalize_text(
                                     drive_item['description']), local_id)
                             )
                             fusion_count += 1

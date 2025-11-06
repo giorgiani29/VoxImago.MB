@@ -1,7 +1,8 @@
-#Testes automatizados para cenários de fusão de metadados
-#Simula conflitos e valida o comportamento do sistema de fusão
+# Testes automatizados para cenários de fusão de metadados
+# Simula conflitos e valida o comportamento do sistema de fusão
 
-from src.database import FileIndexer, normalize_text
+from src.database import FileIndexer
+from src.search import SearchEngine
 import os
 import sys
 import sqlite3
@@ -151,7 +152,7 @@ class FusionTestScenarios:
                         )
                         self.indexer.cursor.execute(
                             "UPDATE search_index SET description = ?, normalized_description = ? WHERE file_id = ?",
-                            (drive_item['description'], normalize_text(
+                            (drive_item['description'], SearchEngine(None).normalize_text(
                                 drive_item['description']), local_id)
                         )
                     fusion_results['successful_fusions'] += 1

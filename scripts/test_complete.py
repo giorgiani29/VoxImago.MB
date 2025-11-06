@@ -1,7 +1,7 @@
-#Teste completo de todas as funcionalidades do VoxImago
+# Teste completo de todas as funcionalidades do VoxImago
 
 import sqlite3
-from src.database import normalize_text
+from src.search import SearchEngine
 import os
 import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -34,7 +34,7 @@ def test_basic_search():
         accent_tests = ["joão", "jose", "pará", "medjugorje", "oração"]
         for term in accent_tests:
             try:
-                norm_term = normalize_text(term)
+                norm_term = SearchEngine(None).normalize_text(term)
                 cursor.execute(
                     "SELECT name FROM search_index WHERE search_index MATCH ?", (norm_term,))
                 results = cursor.fetchall()

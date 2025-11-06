@@ -1,7 +1,8 @@
-#Benchmark de performance para operações de matching e busca
+# Benchmark de performance para operações de matching e busca
 
 
 from src.database import FileIndexer
+from src.search import SearchEngine
 import time
 import sys
 import os
@@ -12,6 +13,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 def benchmark_matching():
     try:
         indexer = FileIndexer()
+        search_engine = SearchEngine(indexer)
     except Exception as e:
         print(f"❌ Erro ao inicializar FileIndexer: {e}")
         return False
@@ -37,7 +39,7 @@ def benchmark_matching():
     try:
         print('📊 Benchmark: load_files_paged')
         start = time.time()
-        files = indexer.load_files_paged(
+        files = search_engine.load_files_paged(
             source, 0, 100, search_term, 'name_asc', filter_type, folder_id, advanced_filters)
         elapsed = time.time() - start
         print(f'✅ Arquivos: {len(files)}, Tempo: {elapsed:.4f}s')

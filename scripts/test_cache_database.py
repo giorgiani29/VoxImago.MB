@@ -1,6 +1,7 @@
-#Teste de cache do banco de dados
+# Teste de cache do banco de dados
 
 from src.database import FileIndexer
+from src.search import SearchEngine
 import time
 import sys
 import os
@@ -11,6 +12,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 def test_cache():
     try:
         indexer = FileIndexer()
+        search_engine = SearchEngine(indexer)
     except Exception as e:
         print(f"❌ Erro ao inicializar FileIndexer: {e}")
         return False
@@ -50,13 +52,13 @@ def test_cache():
     try:
         print('Testando cache de load_files_paged:')
         start = time.time()
-        files1 = indexer.load_files_paged(
+        files1 = search_engine.load_files_paged(
             source, 0, 10, search_term, 'name_asc', filter_type, folder_id, advanced_filters)
         elapsed1 = time.time() - start
         print(f'Arquivos: {len(files1)}, Tempo: {elapsed1:.4f}s')
 
         start = time.time()
-        files2 = indexer.load_files_paged(
+        files2 = search_engine.load_files_paged(
             source, 0, 10, search_term, 'name_asc', filter_type, folder_id, advanced_filters)
         elapsed2 = time.time() - start
         print(f'Arquivos: {len(files2)}, Tempo: {elapsed2:.4f}s')

@@ -8,7 +8,7 @@
 
 import os
 import json
-from .database import normalize_text
+from .search import SearchEngine
 
 SETTINGS_FILE = 'config/settings.json'
 
@@ -54,21 +54,22 @@ def find_local_matches(drive_file, local_files_cursor):
         print(f"✅ Match EXATO encontrado: ID {match[0]}")
 
     if len(matches) == 0:
-        drive_name_normalized = normalize_text(drive_name)
-        print(
-            f"🔍 Tentando busca normalizada: '{drive_name}' → '{drive_name_normalized}'")
+        search_engine = SearchEngine(None)
+        drive_name_normalized = search_engine.normalize_text(drive_name)
+    print(
+        f"🔍 Tentando busca normalizada: '{drive_name}' → '{drive_name_normalized}'")
 
-        local_files_cursor.execute(
-            "SELECT file_id, name FROM files WHERE source='local' AND size=?",
-            (drive_size,)
-        )
-        candidates = local_files_cursor.fetchall()
+    local_files_cursor.execute(
+        "SELECT file_id, name FROM files WHERE source='local' AND size=?",
+        (drive_size,)
+    )
+    candidates = local_files_cursor.fetchall()
 
-        for file_id, local_name in candidates:
-            local_name_normalized = normalize_text(local_name)
-            if local_name_normalized.lower() == drive_name_normalized.lower():
-                matches.append(file_id)
-                print(
-                    f"✅ Match NORMALIZADO encontrado: '{local_name}' → '{local_name_normalized}' (ID: {file_id})")
+    for file_id, local_name in candidates:
+        local_name_normalized = search_engine.normalize_text(local_name)
+        if local_name_normalized.lower() == drive_name_normalized.lower():
+            matches.append(file_id)
+            print(
+                f"✅ Match NORMALIZADO encontrado: '{local_name}' → '{local_name_normalized}' (ID: {file_id})")
 
     return matches

@@ -1,7 +1,7 @@
-# Planejamento Semanal (20 a 26 de Outubro de 2025)
+# Planejamento Semanal (01 a 19 de Novembro de 2025)
 
 
-## ✅ Concluído (13-22/10)
+## ✅ Concluído
 - Logs detalhados do processo de fusão e sincronização
 - Prints/logs para início/fim da fusão, progresso em lotes
 - Tentativa de refatoração com `executemany` (não funcionou)
@@ -31,12 +31,12 @@
 - [x] Normalizar acentuação e caracteres especiais em nomes e buscas (ex: "ú", "&")
 - [x] Implementar menu contextual: abrir no Explorer, copiar caminho (lista e thumbnails)
 - [x] Implementar padrão de data baseado no diretório raiz "Banco de Imagens" (ano) e considerar a mais antiga entre data de criação e modificação
-- [ ] Melhorar feedback e fluxo do token de autenticação (login/logout, expiração)
-- [ ] Modularizar eventos de seleção e duplo clique da lista de arquivos (sinais customizados no FileListView)
-- [ ] Implementar busca híbrida para permitir encontrar tags curtas e símbolos (ex: <3, &boa, #a, @b)
+- [x] Melhorar feedback e fluxo do token de autenticação (login/logout, expiração)
+- [x] Modularizar eventos de seleção e duplo clique da lista de arquivos (sinais customizados no FileListView)
+- [x] Implementar busca híbrida para permitir encontrar símbolos (ex: <3, &boa, #a, @b)
+- [x] Investigar e aprimorar suporte a thumbnails HEIC e RAW (especialmente ARW, CR2, etc.) no Windows
 - [ ] Revisar e corrigir sincronização local para garantir que novas pastas/arquivos sejam detectados corretamente (incrementalmente)
 - [ ] Adicionar lógica para excluir incrementalmente arquivos deletados localmente durante o rescan
-- [ ] Investigar e aprimorar suporte a thumbnails HEIC e RAW (especialmente ARW, CR2, etc.) no Windows
 - [ ] Revisar e aprimorar a UI conforme necessidades identificadas
 
 **Critério de Sucesso:**

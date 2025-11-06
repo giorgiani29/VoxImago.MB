@@ -22,7 +22,8 @@ from PyQt6.QtGui import QFont, QIcon, QAction
 from .details_panel import FileDetailsPanel
 from PyQt6.QtCore import Qt, QTimer, QStringListModel, QDate, QThread, pyqtSignal, QThreadPool, QRunnable, QMetaObject, QSize
 from .list_view import FileListView
-from .database import FileIndexer, normalize_text
+from .database import FileIndexer
+from .search import SearchEngine
 from .widgets import OptionsDialog
 from .utils import load_settings, save_settings
 from .thumbnails import ThumbnailCache, ThumbnailManager
@@ -111,6 +112,7 @@ class DriveFileGalleryApp(QMainWindow):
 
         self.service = None
         self.indexer = FileIndexer()
+        self.search_engine = SearchEngine(self.indexer)
         self.current_view = 'local'
         self.current_page = 0
         self.page_size = 50
@@ -154,7 +156,20 @@ class DriveFileGalleryApp(QMainWindow):
         scan_paths = settings.get('scan_paths')
 
         has_saved_config = bool(scan_paths and len(scan_paths) > 0)
-        has_saved_auth = os.path.exists('config/token.json')
+        self.auth_worker = AuthWorker()
+        has_saved_auth = self.auth_worker.is_authenticated() if self.auth_worker else False
+        refreshed_service = None
+        if self.auth_worker:
+            refreshed_service = self.auth_worker.refresh_token()
+            if refreshed_service:
+                self.service = refreshed_service
+                has_saved_auth = True
+        if has_saved_auth:
+            self._start_auth(auto=True)
+        else:
+            self.update_ui_for_auth_state(False)
+            self.auth_status_label.setText("Clique em Login para começar")
+            self.load_next_batch()
 
         # Comentado temporariamente - sync manual apenas via botões
         # if has_saved_config:
@@ -176,13 +191,6 @@ class DriveFileGalleryApp(QMainWindow):
             self.all_files_loaded = True
             self.loading_label.setText("Nenhum arquivo encontrado.")
             self.loading_label.show()
-
-        if has_saved_auth:
-            self._start_auth(auto=True)
-        else:
-            self.update_ui_for_auth_state(False)
-            self.auth_status_label.setText("Clique em Login para começar")
-            self.load_next_batch()
 
         self.extension_combo.setCurrentIndex(0)
 
@@ -328,18 +336,12 @@ class DriveFileGalleryApp(QMainWindow):
                 self, "Erro", f"Ocorreu um erro ao exibir o status dos serviços:\n{e}")
 
     def _check_token_refresh(self):
-        if not self.is_authenticated:
+        if not self.is_authenticated or not self.auth_worker:
             return
         try:
-            creds = None
-            if os.path.exists(TOKEN_FILE):
-                creds = Credentials.from_authorized_user_file(
-                    TOKEN_FILE, SCOPES)
-            if creds and creds.expired and creds.refresh_token:
-                creds.refresh(Request())
-                with open(TOKEN_FILE, 'w') as token:
-                    token.write(creds.to_json())
-                self.service = build('drive', 'v3', credentials=creds)
+            service = self.auth_worker.refresh_token()
+            if service:
+                self.service = service
         except Exception as e:
             print(f"Erro ao atualizar token: {e}")
 
@@ -552,7 +554,7 @@ class DriveFileGalleryApp(QMainWindow):
 
         self.splitter = QSplitter(Qt.Orientation.Horizontal)
 
-        from .file_list_model import FileListModel
+        from .list_model import FileListModel
         from .thumbnails import FileListDelegate
 
         self.file_list_view = FileListView()
@@ -568,8 +570,8 @@ class DriveFileGalleryApp(QMainWindow):
         self.file_list_view.setUniformItemSizes(True)
         self.file_list_view.setMinimumHeight(400)
         self.file_list_view.setMinimumWidth(500)
-        self.file_list_view.clicked.connect(self.on_file_selected)
-        self.file_list_view.doubleClicked.connect(self.on_double_click)
+        self.file_list_view.fileSelected.connect(self.on_file_selected)
+        self.file_list_view.fileDoubleClicked.connect(self.on_double_click)
         self.file_list_view.verticalScrollBar().valueChanged.connect(self.on_scroll)
 
         self.set_view_mode("grid")
@@ -1056,12 +1058,12 @@ class DriveFileGalleryApp(QMainWindow):
                 self.completer_model.setStringList([])
                 return
 
-            suggestions = self.indexer.get_search_suggestions(
+            suggestions = self.search_engine.get_search_suggestions(
                 text, self.is_authenticated)
 
-            normalized_text = normalize_text(text)
+            normalized_text = self.search_engine.normalize_text(text)
             if normalized_text != text.lower():
-                normalized_suggestions = self.indexer.get_search_suggestions(
+                normalized_suggestions = self.search_engine.get_search_suggestions(
                     normalized_text, self.is_authenticated)
                 suggestions = list(set(suggestions + normalized_suggestions))
 
@@ -1076,7 +1078,8 @@ class DriveFileGalleryApp(QMainWindow):
             self.search_term = original_term.lower()
 
             if self.search_term:
-                normalized_term = normalize_text(self.search_term)
+                normalized_term = self.search_engine.normalize_text(
+                    self.search_term)
                 print(
                     f"🔍 Busca: '{original_term}' → Normalizado: '{normalized_term}'")
 
@@ -1248,60 +1251,6 @@ class DriveFileGalleryApp(QMainWindow):
         self.status_bar.showMessage(
             f"Escaneando arquivos locais... {files_processed} arquivos processados.")
 
-    def _check_initial_auth(self):
-        self.update_ui_for_auth_state(False)
-        self.auth_status_label.setText("Verificando credenciais...")
-
-        creds = None
-        TOKEN_FILE = 'config/token.json'
-        CREDENTIALS_FILE = 'config/credentials.json'
-        from google_auth_oauthlib.flow import InstalledAppFlow
-
-        if creds and creds.expired and creds.refresh_token:
-            try:
-                creds.refresh(Request())
-                with open(TOKEN_FILE, 'w') as token:
-                    token.write(creds.to_json())
-                print("Token atualizado com sucesso.")
-            except Exception as e:
-                print(f"Falha ao atualizar token: {e}")
-                creds = None
-
-        if os.path.exists(TOKEN_FILE):
-            try:
-                creds = Credentials.from_authorized_user_file(
-                    TOKEN_FILE, SCOPES)
-                if not creds or not creds.valid or not creds.refresh_token or not creds.client_id or not creds.client_secret:
-                    raise ValueError("Token inválido ou incompleto.")
-            except Exception:
-                creds = None
-
-        if not creds:
-            if not os.path.exists(CREDENTIALS_FILE):
-                self.auth_status_label.setText(
-                    "Arquivo credentials.json não encontrado.")
-                self.load_next_batch()
-                return
-            flow = InstalledAppFlow.from_client_secrets_file(
-                CREDENTIALS_FILE, SCOPES)
-            creds = flow.run_local_server(port=0)
-            with open(TOKEN_FILE, 'w') as token:
-                token.write(creds.to_json())
-
-        if creds and creds.valid:
-            self.service = build('drive', 'v3', credentials=creds)
-            self.update_ui_for_auth_state(True)
-            self.auth_status_label.setText("Logado com Google")
-
-            settings = load_settings()
-            has_saved_config = bool(settings.get('scan_paths') and len(
-                settings.get('scan_paths', [])) > 0)
-            if has_saved_config:
-                self._start_drive_sync_if_needed()
-        else:
-            self.auth_status_label.setText("Não Autenticado")
-            self.load_next_batch()
-
     def _start_drive_sync_if_needed(self):
         try:
             import datetime
@@ -1360,29 +1309,21 @@ class DriveFileGalleryApp(QMainWindow):
         self.auth_thread.started.connect(self.auth_worker.run)
         self.auth_thread.start()
 
-    def on_auth_success(self, creds):
+    def on_auth_success(self, service):
         self.progress_bar.setVisible(False)
         self.login_button.setEnabled(True)
         self.status_bar.showMessage(
             "Login bem-sucedido.", 5000)
         self.auth_status_label.setText("Logado com Google")
-        self.service = build('drive', 'v3', credentials=creds)
+        self.service = service
         self.update_ui_for_auth_state(True)
-        # Only auto-sync if user has config
         settings = load_settings()
         has_saved_config = bool(settings.get('scan_paths') and len(
             settings.get('scan_paths', [])) > 0)
-        if has_saved_config:
-            self._start_drive_sync_if_needed()
-        else:
-            self.load_next_batch()
+        self.load_next_batch()
 
         self.auth_thread.quit()
         self.auth_thread.wait()
-        self.auth_worker.deleteLater()
-        self.auth_thread.deleteLater()
-        self.auth_worker = None
-        self.auth_thread = None
 
     def on_auth_fail(self, error_message):
         self.progress_bar.setVisible(False)
@@ -1400,9 +1341,8 @@ class DriveFileGalleryApp(QMainWindow):
 
     def handle_logout(self):
         try:
-            TOKEN_FILE = 'config/token.json'
-            if os.path.exists(TOKEN_FILE):
-                os.remove(TOKEN_FILE)
+            if self.auth_worker:
+                self.auth_worker.remove_token()
             self.status_bar.showMessage("Logout bem-sucedido.", 5000)
             self.service = None
             self.indexer.ensure_conn()
@@ -1411,7 +1351,6 @@ class DriveFileGalleryApp(QMainWindow):
             self.indexer.cursor.execute(
                 "DELETE FROM search_index WHERE source='drive'")
             self.indexer.conn.commit()
-            self.clear_display()
             self.update_ui_for_auth_state(False)
             self.auth_status_label.setText("Não Autenticado")
             self.current_view = 'local'
@@ -1651,85 +1590,6 @@ class DriveFileGalleryApp(QMainWindow):
             self.progress_bar.setVisible(False)
             self.status_bar.showMessage("Arquivos carregados.", 3000)
 
-    def debug_search_normalization(self, search_term):
-        if not search_term:
-            print("\n⚠️ DEBUG: Nenhum termo de busca fornecido")
-            return
-
-        print(f"\n" + "="*60)
-        print(f"🔍 DEBUG BUSCA NORMALIZADA - {search_term}")
-        print(f"="*60)
-
-        normalized = normalize_text(search_term)
-        print(f"📝 Termo original: '{search_term}'")
-        print(f"📝 Termo normalizado: '{normalized}'")
-        print(
-            f"📝 Mudança detectada: {'Sim' if search_term.lower() != normalized else 'Não'}")
-
-        try:
-            self.indexer.cursor.execute('SELECT COUNT(*) FROM search_index')
-            total_indexed = self.indexer.cursor.fetchone()[0]
-            print(f"💾 Total de arquivos no índice: {total_indexed:,}")
-        except Exception as e:
-            print(f"❌ Erro ao acessar índice: {e}")
-            return
-
-        print(f"\n🔍 TESTE 1: Busca com termo original")
-        original_results = self.indexer.load_files_paged(
-            source=None, page=0, page_size=8, search_term=search_term,
-            sort_by='name_asc', filter_type='all'
-        )
-        print(f"   Resultados encontrados: {len(original_results)}")
-
-        print(f"\n🔍 TESTE 2: Busca com termo normalizado")
-        normalized_results = self.indexer.load_files_paged(
-            source=None, page=0, page_size=8, search_term=normalized,
-            sort_by='name_asc', filter_type='all'
-        )
-        print(f"   Resultados encontrados: {len(normalized_results)}")
-
-        consistent = len(original_results) == len(normalized_results)
-        status = "✅ CONSISTENTE" if consistent else "⚠️ INCONSISTENTE"
-        print(f"\n🎯 STATUS DA NORMALIZAÇÃO: {status}")
-        if original_results:
-            print(f"\n📋 AMOSTRAS (máximo 5):")
-            for i, result in enumerate(original_results[:5]):
-                name = result.get('name', 'N/A')
-                source = result.get('source', 'N/A')
-                print(f"   {i+1}. [{source}] {name}")
-        else:
-            print(f"\n📋 Nenhum resultado encontrado")
-
-        print(f"\n🔧 DEBUG AVANÇADO FTS5:")
-        try:
-            self.indexer.cursor.execute(
-                'SELECT name FROM search_index WHERE search_index MATCH ? LIMIT 3',
-                (f'"{normalized}"',)
-            )
-            fts_results = self.indexer.cursor.fetchall()
-            print(
-                f"   FTS5 direto com \"{normalized}\": {len(fts_results)} resultados")
-            if normalized != search_term.lower():
-                accent_pattern = f'%{search_term.lower()}%'
-                self.indexer.cursor.execute(
-                    'SELECT name FROM files WHERE LOWER(name) LIKE ? LIMIT 3',
-                    (accent_pattern,)
-                )
-                accent_files = self.indexer.cursor.fetchall()
-                print(
-                    f"   Arquivos com acentos similares: {len(accent_files)}")
-                for file in accent_files:
-                    original_name = file[0]
-                    normalized_name = normalize_text(original_name)
-                    print(f"     '{original_name}' -> '{normalized_name}'")
-
-        except Exception as e:
-            print(f"   ❌ Erro no debug avançado: {e}")
-
-        print(f"\n" + "="*60)
-        print(f"💡 DICA: Use termos como 'formação', 'ação', 'coração' para testar")
-        print(f"="*60)
-
     def debug_system_status(self):
         print(f"\n" + "="*60)
         print(f"🖥️ DEBUG STATUS DO SISTEMA")
@@ -1852,15 +1712,15 @@ class DriveFileGalleryApp(QMainWindow):
         passed_tests = 0
 
         for i, (original, expected_norm) in enumerate(test_samples, 1):
-            actual_norm = normalize_text(original)
+            actual_norm = self.search_engine.normalize_text(original)
             norm_ok = actual_norm == expected_norm
 
             try:
-                results_with_accent = self.indexer.load_files_paged(
+                results_with_accent = self.search_engine.load_files_paged(
                     source=None, page=0, page_size=3, search_term=original,
                     sort_by='name_asc', filter_type='all'
                 )
-                results_without_accent = self.indexer.load_files_paged(
+                results_without_accent = self.search_engine.load_files_paged(
                     source=None, page=0, page_size=3, search_term=expected_norm,
                     sort_by='name_asc', filter_type='all'
                 )
@@ -1910,12 +1770,12 @@ class DriveFileGalleryApp(QMainWindow):
         if not self.search_term and folder_id is None:
             if self.advanced_filters.get('is_starred') or self.advanced_filters.get('extension') not in [None, '']:
                 filter_type = 'all'
-                local_files = self.indexer.load_files_paged(
+                local_files = self.search_engine.load_files_paged(
                     'local', self.current_page, self.page_size, None, self.current_sort, filter_type, None, self.advanced_filters, explorer_special=self.explorer_special_active
                 )
                 drive_files = []
                 if self.is_authenticated and self.show_drive_metadata:
-                    drive_files = self.indexer.load_files_paged(
+                    drive_files = self.search_engine.load_files_paged(
                         'drive', self.current_page, self.page_size, None, self.current_sort, filter_type, None, self.advanced_filters, explorer_special=self.explorer_special_active
                     )
                 all_files = local_files + drive_files
@@ -1939,12 +1799,12 @@ class DriveFileGalleryApp(QMainWindow):
                         "name", "").lower(), reverse=True)
                 return all_files
             else:
-                local_files = self.indexer.load_files_paged(
+                local_files = self.search_engine.load_files_paged(
                     'local', self.current_page, self.page_size, None, self.current_sort, filter_type, None, self.advanced_filters, explorer_special=self.explorer_special_active
                 )
                 drive_files = []
                 if self.is_authenticated and self.show_drive_metadata:
-                    drive_files = self.indexer.load_files_paged(
+                    drive_files = self.search_engine.load_files_paged(
                         'drive', self.current_page, self.page_size, None, self.current_sort, filter_type, None, self.advanced_filters, explorer_special=self.explorer_special_active
                     )
                 all_files = local_files + drive_files
@@ -1970,7 +1830,7 @@ class DriveFileGalleryApp(QMainWindow):
         else:
             if self.advanced_filters.get('extension'):
                 filter_type = 'all'
-            files = self.indexer.load_files_paged(
+            files = self.search_engine.load_files_paged(
                 source, self.current_page, self.page_size, self.search_term,
                 self.current_sort, filter_type, folder_id, self.advanced_filters, explorer_special=self.explorer_special_active
             )
@@ -2000,13 +1860,11 @@ class DriveFileGalleryApp(QMainWindow):
         else:
             self.file_list_model.addFiles(files_to_add)
 
-    def on_file_selected(self, index):
-        file_item = self.file_list_model.data(index, Qt.ItemDataRole.UserRole)
+    def on_file_selected(self, file_item):
         if file_item:
             self.details_panel.update_details(file_item)
 
-    def on_double_click(self, index):
-        file_item = self.file_list_model.data(index, Qt.ItemDataRole.UserRole)
+    def on_double_click(self, file_item):
         if file_item and file_item.get('mimeType') in ['application/vnd.google-apps.folder', 'folder']:
             self.current_page = 0
             self.all_files_loaded = False
@@ -2029,11 +1887,13 @@ class DriveFileGalleryApp(QMainWindow):
         elif event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
             selected_indexes = self.file_list_view.selectedIndexes()
             if selected_indexes:
-                self.on_double_click(selected_indexes[0])
+                file_item = self.file_list_model.data(
+                    selected_indexes[0], Qt.ItemDataRole.UserRole)
+                self.on_double_click(file_item)
         elif event.key() == Qt.Key.Key_F12:
             current_search = self.search_entry.text().strip()
             if current_search:
-                self.debug_search_normalization(current_search)
+                self.search_engine.debug_search_normalization(current_search)
             else:
                 self.debug_system_status()
         elif event.key() == Qt.Key.Key_F11:

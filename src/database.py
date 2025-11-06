@@ -4,6 +4,7 @@
 
 import unicodedata
 import sqlite3
+from .search import SearchEngine
 import os
 import time
 import shutil
@@ -12,58 +13,7 @@ import mimetypes
 THUMBNAIL_CACHE_DIR = "thumbnail_cache"
 
 
-def normalize_text(text):
-    if not text:
-        return ""
-    normalized = ''.join(
-        c for c in unicodedata.normalize('NFD', text.lower().strip())
-        if unicodedata.category(c) != 'Mn'
-    )
-    return normalized
-
-
-def remove_accents(text):
-    return normalize_text(text)
-
-
 class FileIndexer:
-    def parse_search_query(self, search_term):
-        import re
-        filters = {}
-        terms = []
-        exclude_terms = []
-        or_groups = []
-        quoted = re.findall(r'"([^"]+)"', search_term)
-        for q in quoted:
-            terms.append(q)
-        search_term = re.sub(r'"[^"]+"', '', search_term)
-        if 'is:starred' in search_term:
-            filters['is_starred'] = True
-            search_term = search_term.replace('is:starred', '')
-        match_before = re.search(
-            r'createdbefore:(\d{4}-\d{2}-\d{2})', search_term)
-        match_after = re.search(
-            r'createdafter:(\d{4}-\d{2}-\d{2})', search_term)
-        import datetime
-        if match_before:
-            filters['created_before'] = datetime.datetime.strptime(
-                match_before.group(1), '%Y-%m-%d')
-            search_term = search_term.replace(match_before.group(0), '')
-        if match_after:
-            filters['created_after'] = datetime.datetime.strptime(
-                match_after.group(1), '%Y-%m-%d')
-            search_term = search_term.replace(match_after.group(0), '')
-        exclude_terms += re.findall(r'-([\w]+)', search_term)
-        search_term = re.sub(r'-[\w]+', '', search_term)
-        if ' or ' in search_term.lower():
-            or_groups = [t.strip() for t in re.split(
-                r'(?i)\s+or\s+', search_term) if t.strip()]
-        elif ' and ' in search_term.lower():
-            terms += [t.strip()
-                      for t in re.split(r'(?i)\s+and\s+', search_term) if t.strip()]
-        else:
-            terms += [t for t in re.split(r'\s+', search_term) if t]
-        return terms, exclude_terms, or_groups, filters
 
     def buscar_drive_por_metadados(self, termo):
         query = "SELECT file_id, name, path, description, starred, mimeType, createdTime FROM files WHERE source = 'drive' AND (name LIKE ? OR description LIKE ?)"
@@ -96,6 +46,20 @@ class FileIndexer:
         self._create_tables()
         self._count_cache = {}
         self._paged_cache = {}
+        self._auto_rebuild_search_index()
+
+    def _auto_rebuild_search_index(self):
+        try:
+            self.cursor.execute("PRAGMA table_info(search_index)")
+            columns = [row[1] for row in self.cursor.fetchall()]
+            expected = {'name', 'description', 'normalized_name',
+                        'normalized_description', 'file_id', 'source'}
+            if not expected.issubset(set(columns)):
+                print(
+                    "🔄 Recriando índice de busca para compatibilidade com busca híbrida...")
+                self.rebuild_search_index_with_normalization()
+        except Exception as e:
+            print(f"⚠️ Erro ao verificar/recriar índice de busca: {e}")
 
     def ensure_conn(self):
         if self.conn is None:
@@ -163,25 +127,6 @@ class FileIndexer:
         self.conn.commit()
         print("índice de resultados com trigram criado")
 
-    def get_search_suggestions(self, search_term, search_all_sources, limit=10):
-        self.ensure_conn()
-        self.cursor.execute("PRAGMA synchronous=OFF")
-
-        quoted_term = search_term.strip().replace('"', '""')
-        query_term = f'"{quoted_term}*"'
-
-        if search_all_sources:
-            query = "SELECT name FROM search_index WHERE search_index MATCH ? ORDER BY rank LIMIT ?"
-            self.cursor.execute(query, (query_term, limit))
-        else:
-            query = "SELECT name FROM search_index WHERE search_index MATCH ? AND source = 'local' ORDER BY rank LIMIT ?"
-            self.cursor.execute(query, (query_term, limit))
-
-        suggestions = [row[0] for row in self.cursor.fetchall()]
-
-        self.cursor.execute("PRAGMA synchronous=FULL")
-        return list(dict.fromkeys(suggestions))
-
     def save_files_in_batch(self, files_list, source, simulate_error=False):
         self.ensure_conn()
         try:
@@ -218,8 +163,10 @@ class FileIndexer:
                     (
                         item.get('name', ''),
                         item.get('description', ''),
-                        normalize_text(item.get('name', '')),
-                        normalize_text(item.get('description', '')),
+                        SearchEngine(None).normalize_text(
+                            item.get('name', '')),
+                        SearchEngine(None).normalize_text(
+                            item.get('description', '')),
                         item.get('id'),
                         item.get('source')
                     ) for item in files_list
@@ -349,250 +296,6 @@ class FileIndexer:
             self.cursor.execute("SELECT COUNT(*) FROM files")
         return self.cursor.fetchone()[0]
 
-    def load_files_paged(self, source, page, page_size, search_term=None, sort_by='name_asc', filter_type='all', folder_id=None, advanced_filters=None, explorer_special=False):
-        self.ensure_conn()
-        if self.conn is None:
-            return []
-        cache_key = (source, page, page_size, search_term, sort_by,
-                     filter_type, folder_id, str(advanced_filters), explorer_special)
-        if cache_key in self._paged_cache:
-            return self._paged_cache[cache_key]
-        offset = page * page_size
-        sort_map = {
-            'name_asc': 'name ASC',
-            'name_desc': 'name DESC',
-            'size_asc': 'size ASC',
-            'size_desc': 'size DESC',
-            'created_desc': 'createdTime DESC',
-            'created_asc': 'createdTime ASC'
-        }
-        order_by_clause = sort_map.get(sort_by, 'name ASC')
-        files_where_clauses = []
-        files_params = []
-        if search_term:
-            norm_search_term = normalize_text(search_term)
-            print(
-                f"Termo original: '{search_term}' -> Normalizado: '{norm_search_term}'")
-            terms, exclude_terms, or_groups, extra_filters = self.parse_search_query(
-                norm_search_term)
-            valid_terms = [t.strip() for t in (or_groups if or_groups else terms) if t and not t.startswith(
-                '-') and t.strip() and t.strip().upper() not in ['OR', 'AND']]
-            if not valid_terms:
-                self._paged_cache[cache_key] = []
-                return []
-            if or_groups:
-                fts_query = ' OR '.join(valid_terms)
-            else:
-                fts_query = ' '.join(valid_terms)
-            if exclude_terms:
-                not_query = ' NOT '.join([f'"{t}"' for t in exclude_terms])
-                fts_query += f" NOT {not_query}"
-            if not fts_query.strip():
-                self._paged_cache[cache_key] = []
-                return []
-            if explorer_special:
-                query = f"SELECT DISTINCT file_id FROM search_index WHERE search_index MATCH ? AND source = 'local' ORDER BY rank"
-            else:
-                query = f"SELECT DISTINCT file_id FROM search_index WHERE search_index MATCH ? ORDER BY rank"
-            try:
-                self.cursor.execute(query, (fts_query,))
-                print(f"Query FTS: {fts_query}")
-                file_ids_to_fetch = [row[0] for row in self.cursor.fetchall()]
-                print(f"Resultados FTS: {file_ids_to_fetch}")
-            except sqlite3.OperationalError as e:
-                print(f"Erro na consulta FTS: {e}")
-                print(f"Consulta problemática: {fts_query}")
-                self._paged_cache[cache_key] = []
-                return []
-            if not file_ids_to_fetch:
-                self._paged_cache[cache_key] = []
-                return []
-            placeholders = ','.join('?' for _ in file_ids_to_fetch)
-            details_query = f"SELECT file_id, name, path, mimeType, source, description, thumbnailLink, thumbnailPath, size, modifiedTime, createdTime, parentId, starred FROM files WHERE file_id IN ({placeholders})"
-            filter_clauses = []
-            filter_params = list(file_ids_to_fetch)
-            if extra_filters.get('is_starred'):
-                filter_clauses.append("starred = 1")
-            if extra_filters.get('created_before'):
-                filter_clauses.append("createdTime <= ?")
-                filter_params.append(
-                    int(time.mktime(extra_filters['created_before'].timetuple())))
-            if extra_filters.get('created_after'):
-                filter_clauses.append("createdTime >= ?")
-                filter_params.append(
-                    int(time.mktime(extra_filters['created_after'].timetuple())))
-
-            if advanced_filters:
-                if advanced_filters.get('category'):
-                    category = advanced_filters['category']
-                    if category != '':
-                        category_extensions = {
-                            'images': ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.svg', '.ico', '.tiff', '.heic', '.arw', '.cr2', '.nef', '.dng', '.raf', '.orf', '.srw'],
-                            'videos': ['.mp4', '.avi', '.mov', '.wmv', '.flv', '.mkv', '.webm', '.m4v', '.3gp'],
-                            'documents': ['.pdf', '.doc', '.docx', '.txt', '.rtf', '.odt', '.xls', '.xlsx', '.ppt', '.pptx'],
-                            'audios': ['.mp3', '.wav', '.flac', '.aac', '.ogg', '.wma', '.m4a'],
-                            'others': []
-                        }
-                        if category in category_extensions and category != 'others':
-                            extensions = category_extensions[category]
-                            ext_conditions = []
-                            for ext in extensions:
-                                ext_conditions.append("name LIKE ?")
-                                filter_params.append(f"%{ext}")
-                            if ext_conditions:
-                                filter_clauses.append(
-                                    f"({' OR '.join(ext_conditions)})")
-
-                if advanced_filters.get('extension'):
-                    filter_clauses.append("name LIKE ?")
-                    filter_params.append(f"%{advanced_filters['extension']}")
-                    filter_clauses.append("mimeType != 'folder'")
-                    filter_clauses.append(
-                        "mimeType != 'application/vnd.google-apps.folder'")
-
-                if advanced_filters.get('is_starred'):
-                    filter_clauses.append("starred = 1")
-
-                if advanced_filters.get('created_before'):
-                    filter_clauses.append("createdTime <= ?")
-                    filter_params.append(
-                        int(time.mktime(advanced_filters['created_before'].timetuple())))
-
-                if advanced_filters.get('created_after'):
-                    filter_clauses.append("createdTime >= ?")
-                    filter_params.append(
-                        int(time.mktime(advanced_filters['created_after'].timetuple())))
-
-            if filter_clauses:
-                details_query += " AND " + " AND ".join(filter_clauses)
-            self.cursor.execute(details_query, filter_params)
-            rows = self.cursor.fetchall()
-            result = self._build_file_objects_from_search(rows)
-            if sort_by == 'name_asc':
-                result = sorted(
-                    result, key=lambda x: x.get('name', '').lower())
-            elif sort_by == 'name_desc':
-                result = sorted(result, key=lambda x: x.get(
-                    'name', '').lower(), reverse=True)
-            elif sort_by == 'created_desc':
-                result = sorted(result, key=lambda x: x.get(
-                    'createdTime', 0), reverse=True)
-            elif sort_by == 'created_asc':
-                result = sorted(result, key=lambda x: x.get('createdTime', 0))
-            elif sort_by == 'modified_desc':
-                result = sorted(result, key=lambda x: x.get(
-                    'modifiedTime', 0), reverse=True)
-            elif sort_by == 'modified_asc':
-                result = sorted(result, key=lambda x: x.get('modifiedTime', 0))
-            elif sort_by == 'size_asc':
-                result = sorted(result, key=lambda x: x.get('size', 0))
-            elif sort_by == 'size_desc':
-                result = sorted(result, key=lambda x: x.get(
-                    'size', 0), reverse=True)
-            # Paginar em Python
-            start = offset
-            end = offset + page_size
-            paged_result = result[start:end]
-            self._paged_cache[cache_key] = paged_result
-            return paged_result
-        else:
-            if source:
-                files_where_clauses.append("source=?")
-                files_params.append(source)
-            if folder_id:
-                files_where_clauses.append("parentId=?")
-                files_params.append(folder_id)
-            else:
-                files_where_clauses.append(
-                    "(parentId IS NULL OR parentId = '')")
-            if filter_type == 'image':
-                files_where_clauses.append("mimeType LIKE 'image/%'")
-            elif filter_type == 'document':
-                files_where_clauses.append(
-                    "(mimeType LIKE 'application/vnd.google-apps.document' OR mimeType LIKE 'application/pdf' OR mimeType LIKE '%wordprocessingml.document%')")
-            elif filter_type == 'spreadsheet':
-                files_where_clauses.append(
-                    "(mimeType LIKE 'application/vnd.google-apps.spreadsheet' OR mimeType LIKE '%spreadsheetml.sheet%')")
-            elif filter_type == 'presentation':
-                files_where_clauses.append(
-                    "(mimeType LIKE 'application/vnd.google-apps.presentation' OR mimeType LIKE '%presentationml.presentation%')")
-            elif filter_type == 'folder':
-                files_where_clauses.append(
-                    "mimeType = 'folder' OR mimeType = 'application/vnd.google-apps.folder'")
-            if advanced_filters:
-                if 'size_min' in advanced_filters and advanced_filters['size_min']:
-                    files_where_clauses.append("size >= ?")
-                    files_params.append(
-                        advanced_filters['size_min'] * 1024 * 1024)
-                if 'size_max' in advanced_filters and advanced_filters['size_max']:
-                    files_where_clauses.append("size <= ?")
-                    files_params.append(
-                        advanced_filters['size_max'] * 1024 * 1024)
-                if 'modified_after' in advanced_filters and advanced_filters['modified_after']:
-                    files_where_clauses.append("modifiedTime >= ?")
-                    files_params.append(
-                        int(time.mktime(advanced_filters['modified_after'].timetuple())))
-                if 'created_after' in advanced_filters and advanced_filters['created_after']:
-                    files_where_clauses.append("createdTime >= ?")
-                    files_params.append(
-                        int(time.mktime(advanced_filters['created_after'].timetuple())))
-                if 'created_before' in advanced_filters and advanced_filters['created_before']:
-                    files_where_clauses.append("createdTime <= ?")
-                    files_params.append(
-                        int(time.mktime(advanced_filters['created_before'].timetuple())))
-                if 'extension' in advanced_filters and advanced_filters['extension']:
-                    files_where_clauses.append("name LIKE ?")
-                    files_params.append(f"%{advanced_filters['extension']}")
-                    files_where_clauses.append("mimeType != 'folder'")
-                    files_where_clauses.append(
-                        "mimeType != 'application/vnd.google-apps.folder'")
-                if 'is_starred' in advanced_filters and advanced_filters['is_starred']:
-                    files_where_clauses.append("starred = 1")
-                if advanced_filters and advanced_filters.get('category'):
-                    category = advanced_filters['category']
-                    if category != '':
-                        category_extensions = {
-                            'images': ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.svg', '.ico', '.tiff'],
-                            'videos': ['.mp4', '.avi', '.mov', '.wmv', '.flv', '.mkv', '.webm', '.m4v', '.3gp'],
-                            'documents': ['.pdf', '.doc', '.docx', '.txt', '.rtf', '.odt', '.xls', '.xlsx', '.ppt', '.pptx'],
-                            'audios': ['.mp3', '.wav', '.flac', '.aac', '.ogg', '.wma', '.m4a'],
-                            'others': []
-                        }
-                        if category in category_extensions and category != 'others':
-                            extensions = category_extensions[category]
-                            ext_conditions = []
-                            for ext in extensions:
-                                ext_conditions.append("name LIKE ?")
-                                files_params.append(f"%{ext}")
-                            if ext_conditions:
-                                files_where_clauses.append(
-                                    f"({' OR '.join(ext_conditions)})")
-            query = f"SELECT file_id, name, path, mimeType, source, description, thumbnailLink, thumbnailPath, size, modifiedTime, createdTime, parentId, starred FROM files WHERE {' AND '.join(files_where_clauses)} ORDER BY {order_by_clause} LIMIT ? OFFSET ?"
-            if explorer_special:
-                query = query.replace("WHERE", "WHERE source = 'local' AND")
-            files_params.extend([page_size, offset])
-            self.cursor.execute(query, files_params)
-            rows = self.cursor.fetchall()
-            files = [
-                {
-                    'id': row[0],
-                    'name': row[1],
-                    'path': row[2],
-                    'mimeType': row[3],
-                    'source': row[4],
-                    'description': row[5],
-                    'thumbnailLink': row[6],
-                    'thumbnailPath': row[7],
-                    'size': row[8],
-                    'modifiedTime': row[9],
-                    'createdTime': row[10],
-                    'parentId': row[11],
-                    'starred': bool(row[12])
-                } for row in rows
-            ]
-            self._paged_cache[cache_key] = files
-            return files
-
     def get_breadcrumb(self, folder_id, source):
         self.ensure_conn()
         if not folder_id:
@@ -648,16 +351,16 @@ class FileIndexer:
             print("🔄 Iniciando reconstrução do índice com normalização...")
             self.cursor.execute('DROP TABLE IF EXISTS search_index')
             self.cursor.execute('''
-                CREATE VIRTUAL TABLE search_index USING fts5(
-                    name,
-                    description,
-                    normalized_name,
-                    normalized_description,
-                    file_id UNINDEXED,
-                    source UNINDEXED,
-                    tokenize="trigram"
-                )
-            ''')
+                    CREATE VIRTUAL TABLE search_index USING fts5(
+                        name,
+                        description,
+                        normalized_name,
+                        normalized_description,
+                        file_id UNINDEXED,
+                        source UNINDEXED,
+                        tokenize="trigram"
+                    )
+                    ''')
 
             self.cursor.execute(
                 'SELECT file_id, name, description, source FROM files')
@@ -673,8 +376,8 @@ class FileIndexer:
                 batch_data.append((
                     name,
                     description,
-                    normalize_text(name),
-                    normalize_text(description),
+                    SearchEngine(None).normalize_text(name),
+                    SearchEngine(None).normalize_text(description),
                     file_id,
                     source
                 ))
@@ -729,7 +432,7 @@ class FileIndexer:
         ''', (file_id, name, path, mimeType, source, description, thumbnailLink, thumbnailPath, size, modifiedTime, createdTime, parentId, webContentLink, starred))
         self.conn.commit()
         self.cursor.execute('INSERT OR REPLACE INTO search_index (name, description, normalized_name, normalized_description, file_id, source) VALUES (?, ?, ?, ?, ?, ?)',
-                            (name, description, normalize_text(name), normalize_text(description), file_id, source))
+                            (name, description, SearchEngine(None).normalize_text(name), SearchEngine(None).normalize_text(description), file_id, source))
         self.conn.commit()
 
     def toggle_starred(self, file_id):
