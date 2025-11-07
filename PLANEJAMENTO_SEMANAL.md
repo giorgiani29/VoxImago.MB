@@ -20,36 +20,33 @@
 - Aprimorar ordenação por data (garantir consistência e usabilidade)
 - Garantir ordenação correta por tipo de arquivo (mesma abordagem da ordenação por data)
 - Gerar thumbnails para arquivos RAW e vídeos, ou exibir ícone padrão
+- Corrigir exibição do caminho do arquivo no painel de preview para usar barras consistentes
+- Normalizar acentuação e caracteres especiais em nomes e buscas (ex: "ú", "&")
+- Implementar menu contextual: abrir no Explorer, copiar caminho (lista e thumbnails)
+- Implementar padrão de data baseado no diretório raiz "Banco de Imagens" (ano) e considerar a mais antiga entre data de criação e modificação
+- Melhorar feedback e fluxo do token de autenticação (login/logout, expiração)
+- Modularizar eventos de seleção e duplo clique da lista de arquivos (sinais customizados no FileListView)
+- Implementar busca híbrida para permitir encontrar símbolos (ex: <3, &boa, #a, @b)
+- Investigar e aprimorar suporte a thumbnails HEIC e RAW (especialmente ARW, CR2, etc.) no Windows
 
 ---
 
-### Prioridade Máxima: Aprimorar Sistema de Ordenação por Datas
+### Prioridade Máxima: Sincronização Híbrida e em Tempo Real
 
 **Tarefas:**
 
-- [x] Corrigir exibição do caminho do arquivo no painel de preview para usar barras consistentes
-- [x] Normalizar acentuação e caracteres especiais em nomes e buscas (ex: "ú", "&")
-- [x] Implementar menu contextual: abrir no Explorer, copiar caminho (lista e thumbnails)
-- [x] Implementar padrão de data baseado no diretório raiz "Banco de Imagens" (ano) e considerar a mais antiga entre data de criação e modificação
-- [x] Melhorar feedback e fluxo do token de autenticação (login/logout, expiração)
-- [x] Modularizar eventos de seleção e duplo clique da lista de arquivos (sinais customizados no FileListView)
-- [x] Implementar busca híbrida para permitir encontrar símbolos (ex: <3, &boa, #a, @b)
-- [x] Investigar e aprimorar suporte a thumbnails HEIC e RAW (especialmente ARW, CR2, etc.) no Windows
-- [ ] Revisar e corrigir sincronização local para garantir que novas pastas/arquivos sejam detectados corretamente (incrementalmente)
-- [ ] Adicionar lógica para excluir incrementalmente arquivos deletados localmente durante o rescan
-- [ ] Revisar e aprimorar a UI conforme necessidades identificadas
+- [ ] **Monitorar Criação/Remoção Local:** Implementar `watchdog` para detectar quando um arquivo aparece ou desaparece da pasta local.
+- [ ] **Implementar "Soft Delete":** Criar uma coluna `is_present_local` no banco. Ao invés de deletar, marcar o arquivo como ausente se ele sumir da pasta.
+- [ ] **Enriquecer Metadados de Novos Arquivos:** Quando um novo arquivo for detectado, buscar imediatamente seus metadados (descrição, etc.) na API do Drive e atualizar o banco.
+- [ ] **Sincronizar Mudanças da Nuvem:** Usar um `QTimer` para, periodicamente, buscar por arquivos modificados na nuvem e atualizar os metadados no banco local.
+- [ ] **Atualizar a UI com Sinais/Slots:** Garantir que a UI recarregue a visualização após qualquer mudança, usando o sistema de sinais e slots do PyQt para comunicação segura entre threads.
 
 **Critério de Sucesso:**
-- Usuário consegue forçar resincronização local facilmente
-- Sincronização incremental detecta corretamente arquivos/pastas novos e removidos
-- Sistema não mantém "arquivos fantasmas" no banco
-- Datas exibidas corretamente e ordenação funcional
-- Menu contextual disponível e funcional
-- Thumbnails para mais tipos de arquivos
-- Busca e exibição sem problemas de acentuação
-- UI mais intuitiva e responsiva
-- Fluxo de autenticação robusto
-- Usuário consegue ordenar arquivos facilmente por datas, tanto em grid quanto em lista.
+- Novos arquivos na pasta local aparecem na UI quase instantaneamente com metadados completos do Drive.
+- Arquivos removidos da pasta local desaparecem da UI, mas seus metadados são preservados no banco.
+- Alterações na descrição de um arquivo feitas no Google Drive são refletidas na UI após o ciclo de verificação.
+- A aplicação permanece responsiva e estável durante todas as operações de sincronização.
+- O uso de CPU/rede é mínimo, pois apenas mudanças são processadas.
 
 ---
 
