@@ -12,6 +12,12 @@ from .search import SearchEngine
 
 SETTINGS_FILE = 'config/settings.json'
 
+def filter_existing_files(file_records, path_key='caminho'):
+
+    return [f for f in file_records if os.path.exists(f[path_key])]
+
+def get_existing_files(file_records):
+    return [f for f in file_records if os.path.exists(f['path'])]
 
 def load_settings():
     if os.path.exists(SETTINGS_FILE):

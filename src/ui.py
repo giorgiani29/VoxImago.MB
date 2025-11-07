@@ -1560,7 +1560,10 @@ class DriveFileGalleryApp(QMainWindow):
                 self.search_term and self.is_authenticated)
             source = self.current_view if not search_all_sources else None
 
-            files_to_add = self._load_files_for_filters(source)
+            from .utils import filter_existing_files
+            files_raw = self._load_files_for_filters(source)
+            files_to_add = filter_existing_files(
+                files_raw, path_key='path' if files_raw and 'path' in files_raw[0] else 'caminho')
             print(
                 f"DEBUG: Carregados {len(files_to_add)} arquivos para filtro '{self.current_filter}', source='{source}'")
 
