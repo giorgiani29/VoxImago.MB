@@ -1204,6 +1204,11 @@ class DriveFileGalleryApp(QMainWindow):
         self.local_scan_thread.start()
 
     def on_local_scan_finished(self):
+        # Recriar indexador e search engine para garantir nova conexão
+        from .database import FileIndexer
+        from .search import SearchEngine
+        self.indexer = FileIndexer()
+        self.search_engine = SearchEngine(self.indexer)
         try:
             file_count = self.indexer.get_file_count(source='local')
             self.tray_icon.showMessage("Sincronização Local Concluída",
@@ -1222,17 +1227,22 @@ class DriveFileGalleryApp(QMainWindow):
         self.local_scan_worker = None
         self.local_scan_thread = None
 
+        try:
+            self.indexer.ensure_conn()
+            self.indexer.conn.commit()
+            self.indexer.conn.close()
+            self.indexer.conn = None
+        except Exception as e:
+            print(f"[DEBUG UI] Erro ao reiniciar conexão do banco: {e}")
+
         self.current_view = 'local'
         self.advanced_filters = {}
         self.extension_combo.setCurrentIndex(0)
         self._populate_extension_combo()
         self.clear_display()
         self.load_next_batch()
-        # Sem isso não atualiza as thumbnails corretamente
         if hasattr(self.indexer, '_paged_cache'):
             self.indexer._paged_cache.clear()
-
-        # isso faz a load_next_batch de novo e faz com que funcione
         self.apply_advanced_filters()
 
         print("✅ Scan local concluído - verificando se deve iniciar Drive sync")
@@ -1561,11 +1571,13 @@ class DriveFileGalleryApp(QMainWindow):
             source = self.current_view if not search_all_sources else None
 
             from .utils import filter_existing_files
+
             files_raw = self._load_files_for_filters(source)
+            print(f"DEBUG: files_raw (primeiro item): {files_raw[0] if files_raw else 'VAZIO'}")
             files_to_add = filter_existing_files(
                 files_raw, path_key='path' if files_raw and 'path' in files_raw[0] else 'caminho')
-            print(
-                f"DEBUG: Carregados {len(files_to_add)} arquivos para filtro '{self.current_filter}', source='{source}'")
+            print(f"DEBUG: files_to_add (primeiro item): {files_to_add[0] if files_to_add else 'VAZIO'}")
+            print(f"DEBUG: Carregados {len(files_to_add)} arquivos para filtro '{self.current_filter}', source='{source}'")
 
             if not files_to_add:
                 self.all_files_loaded = True

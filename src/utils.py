@@ -14,7 +14,7 @@ SETTINGS_FILE = 'config/settings.json'
 
 def filter_existing_files(file_records, path_key='caminho'):
 
-    return [f for f in file_records if os.path.exists(f[path_key])]
+    return [f for f in file_records if f.get(path_key) and os.path.exists(f[path_key])]
 
 def get_existing_files(file_records):
     return [f for f in file_records if os.path.exists(f['path'])]
@@ -59,11 +59,12 @@ def find_local_matches(drive_file, local_files_cursor):
         matches.append(match[0])
         print(f"✅ Match EXATO encontrado: ID {match[0]}")
 
+    search_engine = SearchEngine(None)
+    drive_name_normalized = search_engine.normalize_text(drive_name)
+    
     if len(matches) == 0:
-        search_engine = SearchEngine(None)
-        drive_name_normalized = search_engine.normalize_text(drive_name)
-    print(
-        f"🔍 Tentando busca normalizada: '{drive_name}' → '{drive_name_normalized}'")
+        print(
+            f"🔍 Tentando busca normalizada: '{drive_name}' → '{drive_name_normalized}'")
 
     local_files_cursor.execute(
         "SELECT file_id, name FROM files WHERE source='local' AND size=?",

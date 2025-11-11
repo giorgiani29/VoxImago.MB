@@ -393,6 +393,12 @@ class LocalScanWorker(QObject):
                         raise
             self.total_processed += len(batch_files)
             self.progress_update.emit(self.total_processed)
+        try:
+            cursor.execute("SELECT COUNT(*), MIN(name), MAX(name) FROM files WHERE source='local'")
+            count, min_name, max_name = cursor.fetchone()
+            print(f"[DEBUG LocalScanWorker] Após scan: {count} arquivos locais. Min: {min_name}, Max: {max_name}")
+        except Exception as e:
+            print(f"[DEBUG LocalScanWorker] Erro ao contar arquivos locais: {e}")
         logging.info(
             f"Scan completed. Total items processed: {total_processed}")
         conn.close()
