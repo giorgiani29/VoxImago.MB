@@ -4,6 +4,7 @@
 
 - Revisar e mapear pontos críticos da UI
 - Refatorar código da interface para facilitar manutenção
+- Remover funções não utilizadas para limpar o código e a interface
 - Melhorar feedback visual e mensagens para o usuário
 - Aprimorar navegação e usabilidade (pastas, buscas, filtros)
 - Testar e validar melhorias de UX
