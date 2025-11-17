@@ -1,8 +1,11 @@
-#Teste de rollback de transações no banco de dados
+"""
+Script de teste de rollback - Valida sistema de transações e rollback do banco
+Testa: commit/rollback de operações batch e recuperação de erros
+"""
 
 import os
 import shutil
-from src.database import FileIndexer
+from database.database import FileIndexer
 
 
 def setup_test_db():

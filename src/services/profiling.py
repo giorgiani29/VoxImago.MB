@@ -1,5 +1,7 @@
-# Sistemma de profile integrado para o Vox Imago
-# Permite medir o desempenho de diferentes partes do código
+'''
+ Sistemma de profile integrado para o Vox Imago
+ Permite medir o desempenho de diferentes partes do código
+'''
 
 import tracemalloc
 import psutil

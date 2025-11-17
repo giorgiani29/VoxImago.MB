@@ -13,7 +13,6 @@ NEW_LETTER = 'L:/'
 
 
 def update_drive_letter():
-    """Atualiza a letra do drive nos caminhos do banco de dados"""
     try:
         if not os.path.exists(DB_PATH):
             print(f"❌ Arquivo de banco de dados não encontrado: {DB_PATH}")

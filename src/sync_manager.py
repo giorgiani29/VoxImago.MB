@@ -1,1 +1,0 @@
-#Vai ser a sync incremental

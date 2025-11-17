@@ -1,10 +1,12 @@
-#Script rápido para testar logs de fusão de metadados
-#Executa uma sincronização forçada do Drive para gerar logs
+"""
+Script de teste de logs de fusão - Força sincronização Drive para gerar logs detalhados
+Testa: logging do processo de fusão e valida saída dos logs
+"""
 
 from googleapiclient.discovery import build
 from google.oauth2.credentials import Credentials
 import json
-from src.workers import DriveSyncWorker
+from src.drive.drive_sync import DriveSync
 import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -39,7 +41,7 @@ def test_fusion_logs():
     force_sync = True
     selected_folders = None
 
-    worker = DriveSyncWorker(service, db_name, force_sync, selected_folders)
+    worker = DriveSync(service, db_name, force_sync, selected_folders)
 
     print("🔄 Iniciando sincronização forçada para testar logs...")
     print("📝 Verifique app.log para ver os logs de fusão/conflitos")

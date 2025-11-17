@@ -25,4 +25,4 @@ pre-commit>=3.0
 
 # Notebooks interativos
 notebook>=7.0
-jupyterlab>=4.0
+jupyterlab>=4.0 

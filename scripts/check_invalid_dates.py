@@ -1,5 +1,7 @@
-# Conecta ao banco de dados e verifica por arquivos com datas de criação
-# ou modificação inválidas (NULL, 0, ou formatos incorretos).
+"""
+Script de verificação de datas - Encontra arquivos com datas inválidas no banco
+Testa: datas NULL, zero ou malformadas nas colunas created_time e modified_time
+"""
 
 import sqlite3
 import os

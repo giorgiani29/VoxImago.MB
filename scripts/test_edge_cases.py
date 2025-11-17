@@ -1,4 +1,7 @@
-#Teste de casos extremos para busca FTS5
+"""
+Script de teste de casos extremos - Valida busca FTS5 com caracteres especiais e situações edge case
+Testa: caracteres especiais, strings vazias, consultas malformadas
+"""
 
 import sqlite3
 

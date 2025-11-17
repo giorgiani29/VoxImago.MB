@@ -1,33 +1,34 @@
-# ui.py - Interface principal do Vox Imago
-# Contém DriveFileGalleryApp e FileDetailsPanel.
-# Gerencia a interface gráfica, eventos, filtros, autenticação e integração com os módulos do projeto.
+'''
+ ui.py - Interface principal do Vox Imago
+ Contém DriveFileGalleryApp e FileDetailsPanel.
+ Gerencia a interface gráfica, eventos, filtros, autenticação e integração com os módulos do projeto.
+'''
 
 import os
 import webbrowser
-
-from google.oauth2.credentials import Credentials
-from googleapiclient.discovery import build
-from google.auth.transport.requests import Request
-from .authentication import AuthWorker
-from .workers import LocalScanWorker, DriveSyncWorker
-from .profiling import memory_profiler, cpu_profiler
+from src.authentication import AuthWorker
+from src.services.local_scan import LocalScan
+from src.drive.processing import start_drive_folder_processing
 
 from PyQt6.QtWidgets import (
-    QMainWindow, QWidget, QHBoxLayout, QLabel, QLineEdit, QPushButton,
-    QMessageBox, QFrame, QDialog, QCheckBox, QDialogButtonBox, QProgressBar, QComboBox, QCompleter,
-    QSplitter, QDateEdit, QVBoxLayout, QProgressDialog, QListView, QSystemTrayIcon, QMenu,
-    QToolButton, QAbstractItemView
+    QMainWindow, QWidget, QLabel, QMessageBox, QDialog, QDialogButtonBox, QProgressBar, QSplitter, QVBoxLayout, QProgressDialog, QListView, QSystemTrayIcon, QMenu,
+    QAbstractItemView
 )
-from PyQt6.QtGui import QFont, QIcon, QAction
-from .details_panel import FileDetailsPanel
-from PyQt6.QtCore import Qt, QTimer, QStringListModel, QDate, QThread, pyqtSignal, QThreadPool, QRunnable, QMetaObject, QSize
-from .list_view import FileListView
-from .database import FileIndexer
-from .search import SearchEngine
-from .widgets import OptionsDialog
-from .utils import load_settings, save_settings
-from .thumbnails import ThumbnailCache, ThumbnailManager
-from .utils import SETTINGS_FILE as TOKEN_FILE
+
+from PyQt6.QtGui import QIcon, QAction
+from src.ui.details_panel import FileDetailsPanel
+from PyQt6.QtCore import Qt, QTimer, QStringListModel, QDate, QThread, pyqtSignal, QThreadPool, QRunnable, QMetaObject, QSize, QItemSelectionModel
+from src.ui.list_view import FileListView
+from src.database.database import FileIndexer
+from src.database.search import SearchEngine
+from src.ui.local_dialog import OptionsDialog
+from src.drive.drive_dialog import DriveFolderDialog
+from src.utils.utils import load_settings, save_settings, filter_existing_files
+from src.ui.thumbnails import ThumbnailCache, ThumbnailManager, FileListDelegate
+from src.ui.main_bar import MainBar
+from src.ui.list_model import FileListModel
+from src.ui.list_update import list_update
+
 
 SCOPES = ['https://www.googleapis.com/auth/drive.readonly']
 
@@ -75,6 +76,7 @@ class DriveFileGalleryApp(QMainWindow):
                 "Nenhuma pasta local configurada para reindexação.", 5000)
 
     def __init__(self):
+        print('DEBUG: DriveFileGalleryApp.__init__ INICIO')
         super().__init__()
         self.setWindowTitle("VoxImago - Galeria de Arquivos")
         self.setMinimumSize(1260, 660)
@@ -125,13 +127,13 @@ class DriveFileGalleryApp(QMainWindow):
         self.is_loading = False
         self.all_files_loaded = False
         self.is_authenticated = False
+        self.drive_sync_after_local_scan = False
+        self.drive_sync_running = False
 
         self.auth_thread = None
         self.auth_worker = None
         self.local_scan_thread = None
         self.local_scan_worker = None
-        self.drive_sync_thread = None
-        self.drive_sync_worker = None
         self.search_timer = QTimer()
         self.search_timer.setSingleShot(True)
         self.search_timer.timeout.connect(self.handle_search_request)
@@ -168,58 +170,28 @@ class DriveFileGalleryApp(QMainWindow):
             self._start_auth(auto=True)
         else:
             self.update_ui_for_auth_state(False)
-            self.auth_status_label.setText("Clique em Login para começar")
-            self.load_next_batch()
+            list_update.load_next_batch(self)
 
-        # Comentado temporariamente - sync manual apenas via botões
-        # if has_saved_config:
-        #     if self._should_perform_local_scan():
-        #         self._start_local_scan(scan_paths)
-        #     else:
-        #         self.status_bar.showMessage(
-        #             "Arquivos locais já indexados recentemente", 3000)
-        # else:
         if not has_saved_config:
-            self.indexer.cursor.execute(
-                "DELETE FROM files WHERE source='local'")
-            self.indexer.cursor.execute(
-                "DELETE FROM search_index WHERE source='local'")
-            self.indexer.conn.commit()
             self.current_view = 'local'
             self.current_folder_id = None
-            self.clear_display()
-            self.all_files_loaded = True
-            self.loading_label.setText("Nenhum arquivo encontrado.")
+            try:
+                existing_count = self.indexer.conn.execute(
+                    "SELECT COUNT(*) FROM files WHERE source='local'").fetchone()[0]
+                if existing_count == 0:
+                    list_update.clear_display(self)
+                    self.all_files_loaded = True
+                    self.loading_label.setText("Nenhum arquivo encontrado.")
+                else:
+                    print(
+                        f"📁 {existing_count} arquivos locais encontrados no banco")
+                    list_update.load_next_batch(self)
+            except Exception as e:
+                print(f"⚠️ Erro ao verificar arquivos existentes: {e}")
+                list_update.clear_display(self)
+                self.all_files_loaded = True
+                self.loading_label.setText("Nenhum arquivo encontrado.")
             self.loading_label.show()
-
-        self.extension_combo.setCurrentIndex(0)
-
-    def _should_perform_local_scan(self):
-        try:
-            import datetime
-            with open('data/last_local_sync.txt', 'r') as f:
-                last_sync = f.read().strip()
-
-            if last_sync == '1970-01-01T00:00:00.000Z':
-                return True
-
-            last_time = datetime.datetime.fromisoformat(
-                last_sync.replace('Z', '+00:00'))
-            now = datetime.datetime.now(datetime.timezone.utc)
-
-            diff_minutes = (now - last_time).total_seconds() / 60
-            print(f"🕐 Última sync local: {diff_minutes:.1f} minutos atrás")
-
-            if diff_minutes < 30:
-                print(f"⏭️ Pulando scan local (muito recente)")
-                return False
-            else:
-                print(f"🔄 Executando scan local (tempo suficiente)")
-                return True
-
-        except Exception as e:
-            print(f"⚠️ Erro ao verificar timestamp, fazendo scan: {e}")
-            return True
 
     def close(self):
         try:
@@ -228,27 +200,15 @@ class DriveFileGalleryApp(QMainWindow):
             QMessageBox.critical(
                 self, "Erro", f"Ocorreu um erro ao fechar o aplicativo:\n{e}")
 
-    def show(self):
-        try:
-            super().show()
-        except Exception as e:
-            QMessageBox.critical(
-                self, "Erro", f"Ocorreu um erro ao exibir a janela:\n{e}")
+    def set_view_mode(self, mode=None):
+        if mode is None:
+            if self.action_grid_view.isChecked():
+                mode = "grid"
+            elif self.action_list_view.isChecked():
+                mode = "list"
+            else:
+                mode = "grid"
 
-    def closeEvent(self, event):
-        try:
-            if hasattr(self, 'indexer') and self.indexer.conn:
-                self.indexer.conn.close()
-
-            if hasattr(self, 'tray_icon'):
-                self.tray_icon.hide()
-
-            event.accept()
-        except Exception as e:
-            QMessageBox.critical(
-                self, "Erro", f"Ocorreu um erro ao finalizar o aplicativo:\n{e}")
-
-    def set_view_mode(self, mode):
         if mode == "grid":
             self.file_list_view.setViewMode(QListView.ViewMode.IconMode)
             self.file_list_view.setIconSize(QSize(200, 200))
@@ -300,15 +260,12 @@ class DriveFileGalleryApp(QMainWindow):
                 except:
                     status_lines.append("✗ Erro ao acessar arquivos locais")
 
-            if self.drive_sync_thread and self.drive_sync_thread.isRunning():
-                status_lines.append("⟳ Sincronização do Drive em andamento...")
-            else:
-                try:
-                    drive_count = self.indexer.get_file_count(source='drive')
-                    status_lines.append(
-                        f"✓ Arquivos do Drive indexados: {drive_count}")
-                except:
-                    status_lines.append("✗ Erro ao acessar arquivos do Drive")
+            try:
+                drive_count = self.indexer.get_file_count(source='drive')
+                status_lines.append(
+                    f"✓ Arquivos do Drive indexados: {drive_count}")
+            except:
+                status_lines.append("✗ Erro ao acessar arquivos do Drive")
 
             if self.is_loading:
                 status_lines.append("⟳ Carregando arquivos...")
@@ -327,8 +284,8 @@ class DriveFileGalleryApp(QMainWindow):
                 status_lines.append("🏠 Modo Explorer Local ativo")
 
             status_text = "\n".join(status_lines)
-            show_progress = (self.local_scan_thread and self.local_scan_thread.isRunning()) or (
-                self.drive_sync_thread and self.drive_sync_thread.isRunning())
+            show_progress = (
+                self.local_scan_thread and self.local_scan_thread.isRunning())
             dialog = ServiceStatusDialog(status_text, show_progress, self)
             dialog.exec()
         except Exception as e:
@@ -346,216 +303,39 @@ class DriveFileGalleryApp(QMainWindow):
             print(f"Erro ao atualizar token: {e}")
 
     def _setup_ui(self):
+        print('DEBUG: _setup_ui chamado')
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
         main_layout = QVBoxLayout(central_widget)
 
-        unified_bar = QFrame()
-        unified_bar.setFrameShape(QFrame.Shape.StyledPanel)
-        unified_bar.setFrameShadow(QFrame.Shadow.Raised)
-        unified_bar.setFixedHeight(50)
+        self.main_bar = MainBar(self)
+        main_layout.addWidget(self.main_bar)
+        self.action_grid_view = self.main_bar.action_grid_view
+        self.action_list_view = self.main_bar.action_list_view
 
-        unified_layout = QHBoxLayout(unified_bar)
-        unified_layout.setContentsMargins(15, 8, 15, 8)
-
-        self.app_title_label = QLabel("VI-MB")
-        self.app_title_label.setFont(QFont("Arial", 12, QFont.Weight.Bold))
-        unified_layout.addWidget(self.app_title_label)
-        unified_layout.addSpacing(15)
-
-        unified_layout.addStretch()
-
-        self.tools_menu = QMenu("Ferramentas", self)
-
-        self.tools_menu.addAction("Pastas Locais", self._show_scan_options)
-        self.tools_menu.addAction(
-            "Selecionar Pastas do Drive", self._show_drive_folder_selection)
-        self.tools_menu.addAction("Atualizar Drive", self._start_drive_sync)
-        self.tools_menu.addAction(
-            "Reindexar Arquivos Locais", self._reindex_local_files)
-        self.tools_menu.addAction("Limpar Cache", self.clear_thumbnail_cache)
-        self.tools_menu.addAction(
-            "Forçar Rescan Local", self.force_rescan_local)
-        self.explorer_action = QAction("Explorer Local", self)
-        self.explorer_action.setCheckable(True)
-        self.explorer_action.setChecked(self.explorer_special_active)
-        self.explorer_action.triggered.connect(self.toggle_explorer_special)
-        self.tools_menu.addAction(self.explorer_action)
-
-        self.action_grid_view = QAction("Visualização em Grade", self)
-        self.action_grid_view.setCheckable(True)
-        self.action_grid_view.triggered.connect(
-            lambda: self.set_view_mode("grid"))
-        self.tools_menu.addAction(self.action_grid_view)
-
-        self.action_list_view = QAction("Visualização em Lista", self)
-        self.action_list_view.setCheckable(True)
-        self.action_list_view.triggered.connect(
-            lambda: self.set_view_mode("list"))
-        self.tools_menu.addAction(self.action_list_view)
-
-        self.tools_button = QToolButton(self)
-        self.tools_button.setText("🛠️ Ferramentas")
-        self.tools_button.setPopupMode(
-            QToolButton.ToolButtonPopupMode.InstantPopup)
-        self.tools_button.setMenu(self.tools_menu)
-
-        self.search_entry = QLineEdit()
-        self.search_entry.setPlaceholderText("Pesquisar...")
-        self.search_entry.setFixedWidth(250)
-        self.search_entry.textChanged.connect(self.handle_search_input)
-        unified_layout.addWidget(self.search_entry)
-        unified_layout.addStretch()
-
-        self.filter_combo = QComboBox()
-        self.filter_combo.addItem("Todos os Tipos", "all")
-        self.filter_combo.addItem("Imagens", "image")
-        self.filter_combo.addItem("Documentos", "document")
-        self.filter_combo.addItem("Planilhas", "spreadsheet")
-        self.filter_combo.addItem("Apresentações", "presentation")
-        self.filter_combo.addItem("Pastas", "folder")
-        self.filter_combo.activated.connect(self.change_filter_type_combo)
-        self.filter_combo.setEnabled(False)
-
-        self.sort_combo = QComboBox()
-        self.sort_combo.addItem("Nome (A-Z)", "name_asc")
-        self.sort_combo.addItem("Nome (Z-A)", "name_desc")
-        self.sort_combo.addItem("Tamanho (Menor)", "size_asc")
-        self.sort_combo.addItem("Tamanho (Maior)", "size_desc")
-        self.sort_combo.addItem("Data (Mais recente)", "created_desc")
-        self.sort_combo.addItem("Data (Mais antiga)", "created_asc")
-        self.sort_combo.activated.connect(self.change_sort_order)
-        self.sort_combo.setEnabled(False)
-
-        self.category_combo = QComboBox()
-        self.category_combo.setEditable(False)
-        self.category_combo.setPlaceholderText("Filtrar por tipo")
-        self._populate_category_combo()
-
-        filter_label = QLabel("Tipo:")
-        filter_label.setFixedWidth(50)
-        unified_layout.addWidget(filter_label)
-        unified_layout.addWidget(self.category_combo)
-        unified_layout.addSpacing(5)
-        sort_label = QLabel("Ordenar por:")
-        sort_label.setFixedWidth(70)
-        unified_layout.addWidget(sort_label)
-        unified_layout.addWidget(self.sort_combo)
-
-        unified_layout.addSpacing(5)
-        self.more_filters_button = QPushButton("Mais Filtros ▼")
-        self.more_filters_button.setCheckable(True)
-        self.more_filters_button.clicked.connect(self.toggle_advanced_filters)
-        unified_layout.addWidget(self.more_filters_button)
-
-        self.extension_combo = QComboBox()
-        self.extension_combo.setEditable(False)
-        self.extension_combo.setPlaceholderText("Selecione a extensão")
-        self._populate_extension_combo()
-
-        self.modified_after_date = QDateEdit()
-        self.modified_after_date.setDate(QDate.currentDate().addDays(-7))
-        self.modified_after_date.setCalendarPopup(True)
-
-        self.created_after_date = QDateEdit()
-        self.created_after_date.setDate(QDate.currentDate().addDays(-7))
-        self.created_after_date.setCalendarPopup(True)
-
-        self.created_before_date = QDateEdit()
-        self.created_before_date.setDate(QDate.currentDate())
-        self.created_before_date.setCalendarPopup(True)
-
-        self.starred_checkbox = QCheckBox("Favoritos")
-
-        self.apply_advanced_filter_button = QPushButton("Aplicar Filtros")
-        self.apply_advanced_filter_button.clicked.connect(
-            self.apply_advanced_filters)
-
-        self.clear_advanced_filter_button = QPushButton("Limpar Filtros")
-        self.clear_advanced_filter_button.clicked.connect(
-            self.clear_advanced_filters)
-
-        self.advanced_filter_layout = QHBoxLayout()
-
-        self.ext_label = QLabel("Extensão:")
-        self.ext_label.setFixedWidth(80)
-        self.ext_label.setFixedHeight(30)
-        self.ext_label.setAlignment(Qt.AlignmentFlag.AlignVCenter)
-        self.advanced_filter_layout.addWidget(self.ext_label)
-        self.advanced_filter_layout.addWidget(self.extension_combo)
-
-        self.mod_label = QLabel("Modificado após:")
-        self.mod_label.setFixedWidth(100)
-        self.mod_label.setFixedHeight(30)
-        self.mod_label.setAlignment(Qt.AlignmentFlag.AlignVCenter)
-        self.advanced_filter_layout.addWidget(self.mod_label)
-        self.advanced_filter_layout.addWidget(self.modified_after_date)
-
-        self.created_after_label = QLabel("Criado após:")
-        self.created_after_label.setFixedWidth(80)
-        self.created_after_label.setFixedHeight(30)
-        self.created_after_label.setAlignment(Qt.AlignmentFlag.AlignVCenter)
-        self.advanced_filter_layout.addWidget(self.created_after_label)
-        self.advanced_filter_layout.addWidget(self.created_after_date)
-
-        self.created_before_label = QLabel("Criado antes:")
-        self.created_before_label.setFixedWidth(90)
-        self.created_before_label.setFixedHeight(30)
-        self.created_before_label.setAlignment(Qt.AlignmentFlag.AlignVCenter)
-        self.advanced_filter_layout.addWidget(self.created_before_label)
-        self.advanced_filter_layout.addWidget(self.created_before_date)
-
-        self.advanced_filter_layout.addWidget(self.starred_checkbox)
-        self.advanced_filter_layout.addWidget(
-            self.apply_advanced_filter_button)
-        self.advanced_filter_layout.addWidget(
-            self.clear_advanced_filter_button)
-
-        self.advanced_filter_layout.setSpacing(15)
-        self.advanced_filter_layout.setContentsMargins(5, 5, 5, 5)
-        self.advanced_filter_layout.setSpacing(5)
-        self.advanced_filters_widget = QWidget()
-        self.advanced_filters_widget.setLayout(self.advanced_filter_layout)
-        self.advanced_filters_widget.setObjectName("advanced_filters_widget")
-        self.advanced_filters_widget.hide()
-
-        main_layout.addWidget(self.advanced_filters_widget)
-
-        unified_layout.addStretch()
-
-        self.scan_options_button = QPushButton("Pastas Locais")
-        self.scan_options_button.clicked.connect(self._show_scan_options)
-        self.sync_drive_button = QPushButton("Atualizar Drive")
-        self.sync_drive_button.clicked.connect(self._start_drive_sync)
-        self.reindex_button = QPushButton("Reindexar arquivos locais")
-        self.reindex_button.clicked.connect(self._reindex_local_files)
-        self.login_button = QPushButton("Login")
-        self.login_button.clicked.connect(self._start_auth)
-        self.logout_button = QPushButton("Logout")
-        self.logout_button.clicked.connect(self.handle_logout)
-        self.auth_status_label = QLabel("Verificando...")
-        self.auth_status_label.setFixedWidth(150)
-        self.clear_cache_button = QPushButton("Limpar Cache")
-        self.clear_cache_button.clicked.connect(self.clear_thumbnail_cache)
-        self.explorer_button = QPushButton("Explorer Local")
-        self.explorer_button.clicked.connect(self.toggle_explorer_special)
-
-        unified_layout.addWidget(self.tools_button)
-        unified_layout.addWidget(self.auth_status_label)
-        unified_layout.addWidget(self.login_button)
-        unified_layout.addWidget(self.logout_button)
-
-        self.completer = QCompleter(self.completer_model, self)
-        self.completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
-        self.completer.setFilterMode(Qt.MatchFlag.MatchContains)
-        self.search_entry.setCompleter(self.completer)
-
-        main_layout.addWidget(unified_bar)
+        self.main_bar.action_scan_options.triggered.connect(
+            self._show_scan_options)
+        self.main_bar.action_sync_drive.triggered.connect(
+            self._start_drive_sync)
+        self.main_bar.action_reindex.triggered.connect(
+            self._reindex_local_files)
+        self.main_bar.action_clear_cache.triggered.connect(
+            self.clear_thumbnail_cache)
+        self.main_bar.action_explorer.triggered.connect(
+            self.toggle_explorer_special)
+        self.main_bar.action_grid_view.triggered.connect(
+            lambda: self.set_view_mode(None))
+        self.main_bar.action_list_view.triggered.connect(
+            lambda: self.set_view_mode(None))
+        self.main_bar.login_button.clicked.connect(self._start_auth)
+        self.main_bar.logout_button.clicked.connect(self.handle_logout)
+        self.main_bar.search_entry.textChanged.connect(
+            self.handle_search_input)
+        self.main_bar.sort_combo.activated.connect(self.change_sort_order)
+        self.main_bar.category_combo.activated.connect(
+            self.change_filter_type_combo)
 
         self.splitter = QSplitter(Qt.Orientation.Horizontal)
-
-        from .list_model import FileListModel
-        from .thumbnails import FileListDelegate
 
         self.file_list_view = FileListView()
         self.file_list_model = FileListModel([])
@@ -611,18 +391,6 @@ class DriveFileGalleryApp(QMainWindow):
 
         self.update_ui_for_auth_state(False)
         self.update_filter_buttons()
-
-        self.extension_combo.currentIndexChanged.connect(
-            self.apply_advanced_filters)
-        self.category_combo.currentIndexChanged.connect(
-            self.apply_advanced_filters)
-        self.modified_after_date.dateChanged.connect(
-            self.apply_advanced_filters)
-        self.created_after_date.dateChanged.connect(
-            self.apply_advanced_filters)
-        self.created_before_date.dateChanged.connect(
-            self.apply_advanced_filters)
-        self.starred_checkbox.stateChanged.connect(self.apply_advanced_filters)
 
         self.setStyleSheet("""
             /* Fundo principal escuro */
@@ -910,21 +678,6 @@ class DriveFileGalleryApp(QMainWindow):
         else:
             return "others"
 
-    def _populate_category_combo(self):
-        self.category_combo.clear()
-
-        categories = [
-            ("🔵 Todos", ""),
-            ("🖼️ Imagens", "images"),
-            ("🎬 Vídeos", "videos"),
-            ("📄 Documentos", "documents"),
-            ("🎵 Áudios", "audios"),
-            ("📁 Outros", "others")
-        ]
-
-        for display_name, value in categories:
-            self.category_combo.addItem(display_name, value)
-
     def apply_advanced_filters(self):
         filters = {}
 
@@ -932,7 +685,7 @@ class DriveFileGalleryApp(QMainWindow):
         if extension_value not in [None, '']:
             filters['extension'] = extension_value
 
-        category_value = self.category_combo.currentData()
+        category_value = self.main_bar.category_combo.currentData()
         if category_value not in [None, '']:
             filters['category'] = category_value
 
@@ -954,9 +707,9 @@ class DriveFileGalleryApp(QMainWindow):
         self.advanced_filters = filters
         self.current_page = 0
         self.all_files_loaded = False
-        self.clear_display()
+        list_update.clear_display(self)
         print(f"🔍 Filtros aplicados: {filters}")
-        self.load_next_batch()
+        list_update.load_next_batch(self)
 
     def clear_advanced_filters(self):
         self.extension_combo.setCurrentIndex(0)
@@ -966,8 +719,8 @@ class DriveFileGalleryApp(QMainWindow):
         self.advanced_filters = {}
         self.current_page = 0
         self.all_files_loaded = False
-        self.clear_display()
-        self.load_next_batch()
+        list_update.clear_display(self)
+        list_update.load_next_batch(self)
         self.starred_checkbox.setChecked(False)
 
     def clear_thumbnail_cache(self):
@@ -975,16 +728,16 @@ class DriveFileGalleryApp(QMainWindow):
         self.status_bar.showMessage("Cache de miniaturas limpo.", 5000)
         self.current_page = 0
         self.all_files_loaded = False
-        self.clear_display()
-        self.load_next_batch()
+        list_update.clear_display(self)
+        list_update.load_next_batch(self)
 
     def navigate_to_root(self, source):
         self.current_view = None
         self.current_folder_id = None
         self.current_page = 0
         self.all_files_loaded = False
-        self.clear_display()
-        self.load_next_batch()
+        list_update.clear_display(self)
+        list_update.load_next_batch(self)
 
     def navigate_to_folder(self, folder_id):
         self.search_term = ""
@@ -992,36 +745,39 @@ class DriveFileGalleryApp(QMainWindow):
         self.current_folder_id = folder_id
         self.current_page = 0
         self.all_files_loaded = False
-        self.clear_display()
-        self.load_next_batch()
+        list_update.clear_display(self)
+        list_update.load_next_batch(self)
 
     def update_filter_buttons(self):
-        is_searching = bool(self.search_term)
-        self.filter_combo.setEnabled(not is_searching)
-        self.sort_combo.setEnabled(True)
+        self.main_bar.category_combo.setEnabled(True)
+        self.main_bar.sort_combo.setEnabled(True)
 
     def change_filter_type_combo(self, index):
-        self.current_filter = self.filter_combo.itemData(index)
+        selected_category = self.main_bar.category_combo.itemData(index)
+        self.current_filter = selected_category
         print(f"DEBUG: Filtro alterado para: {self.current_filter}")
+        if selected_category:
+            self.advanced_filters['category'] = selected_category
+        else:
+            self.advanced_filters.pop('category', None)
         self.current_page = 0
         self.all_files_loaded = False
-        self.clear_display()
-        self.load_next_batch()
+        list_update.clear_display(self)
+        list_update.load_next_batch(self)
 
     def change_sort_order(self, index):
-        self.current_sort = self.sort_combo.itemData(index)
+        self.current_sort = self.main_bar.sort_combo.itemData(index)
         self.current_page = 0
         self.all_files_loaded = False
-        self.clear_display()
-        self.load_next_batch()
+        list_update.clear_display(self)
+        list_update.load_next_batch(self)
 
     def toggle_explorer_special(self):
-        self.explorer_special_active = not self.explorer_special_active
-        self.explorer_action.setChecked(self.explorer_special_active)
+        self.explorer_special_active = self.main_bar.action_explorer.isChecked()
         self.current_page = 0
         self.all_files_loaded = False
-        self.clear_display()
-        self.load_next_batch()
+        list_update.clear_display(self)
+        list_update.load_next_batch(self)
 
     def toggle_advanced_filters(self):
         if self.advanced_filters_widget.isVisible():
@@ -1046,14 +802,14 @@ class DriveFileGalleryApp(QMainWindow):
             self.current_page = 0
             self.all_files_loaded = False
             self.current_folder_id = None
-            self.clear_display()
-            self.load_next_batch()
+            list_update.clear_display(self)
+            list_update.load_next_batch(self)
 
         self.update_filter_buttons()
 
     def update_search_suggestions(self):
         try:
-            text = self.search_entry.text().strip()
+            text = self.main_bar.search_entry.text().strip()
             if not text:
                 self.completer_model.setStringList([])
                 return
@@ -1074,7 +830,7 @@ class DriveFileGalleryApp(QMainWindow):
 
     def handle_search_request(self):
         try:
-            original_term = self.search_entry.text().strip()
+            original_term = self.main_bar.search_entry.text().strip()
             self.search_term = original_term.lower()
 
             if self.search_term:
@@ -1086,23 +842,23 @@ class DriveFileGalleryApp(QMainWindow):
             self.current_page = 0
             self.all_files_loaded = False
             self.current_folder_id = None
-            self.clear_display()
-            self.load_next_batch()
+            list_update.clear_display(self)
+            list_update.load_next_batch(self)
         except Exception as e:
             QMessageBox.critical(
                 self, "Erro", f"Ocorreu um erro ao buscar arquivos:\n{e}")
 
     def update_ui_for_auth_state(self, is_authenticated):
         self.is_authenticated = is_authenticated
-        self.login_button.setVisible(not is_authenticated)
-        self.logout_button.setVisible(is_authenticated)
+        self.main_bar.login_button.setVisible(not is_authenticated)
+        self.main_bar.logout_button.setVisible(is_authenticated)
 
     def on_scroll(self, value):
         scroll_bar = self.file_list_view.verticalScrollBar()
         threshold = scroll_bar.maximum() * 0.2
         if value >= scroll_bar.maximum() - threshold and not self.is_loading and not self.all_files_loaded:
             self.scroll_loading = True
-            self.load_next_batch()
+            list_update.load_next_batch(self)
 
     def _show_scan_options(self):
         if self.local_scan_thread and self.local_scan_thread.isRunning():
@@ -1112,37 +868,27 @@ class DriveFileGalleryApp(QMainWindow):
 
         dialog = OptionsDialog(self)
         if dialog.exec() == QDialog.DialogCode.Accepted:
-            selected_paths = dialog.get_selected_paths()
-            show_drive_metadata = dialog.get_show_drive_metadata()
+
+            selected_paths = dialog.get_selected_folders()
             settings = load_settings()
             settings['scan_paths'] = selected_paths
-            settings['show_drive_metadata'] = show_drive_metadata
             save_settings(settings)
-
-            self.show_drive_metadata = show_drive_metadata
-
-            if show_drive_metadata and self.is_authenticated:
-                self._start_drive_sync()
 
             self.current_view = 'local'
             self.current_folder_id = None
-            self.clear_display()
+            list_update.clear_display(self)
             self.all_files_loaded = False
             self.current_page = 0
 
             if selected_paths:
                 self._start_local_scan(selected_paths)
             else:
-                self.indexer.cursor.execute(
-                    "DELETE FROM files WHERE source='local'")
-                self.indexer.cursor.execute(
-                    "DELETE FROM search_index WHERE source='local'")
-                self.indexer.conn.commit()
+                self.indexer.clear_source('local')
                 self.loading_label.setText("Nenhum arquivo encontrado.")
                 self.loading_label.show()
                 self.all_files_loaded = True
 
-            self.load_next_batch()
+        list_update.load_next_batch(self)
 
     def force_rescan_local(self):
         if self.local_scan_thread and self.local_scan_thread.isRunning():
@@ -1152,143 +898,134 @@ class DriveFileGalleryApp(QMainWindow):
 
         dialog = OptionsDialog(self)
         if dialog.exec() == QDialog.DialogCode.Accepted:
-            selected_paths = dialog.get_selected_paths()
-            show_drive_metadata = dialog.get_show_drive_metadata()
+            selected_paths = dialog.get_selected_folders() if hasattr(
+                dialog, 'get_selected_folders') else None
             settings = load_settings()
             settings['scan_paths'] = selected_paths
-            settings['show_drive_metadata'] = show_drive_metadata
             save_settings(settings)
-
-            self.show_drive_metadata = show_drive_metadata
-
-            if show_drive_metadata and self.is_authenticated:
-                self._start_drive_sync()
 
             self.current_view = 'local'
             self.current_folder_id = None
-            self.clear_display()
+            list_update.clear_display(self)
             self.all_files_loaded = False
             self.current_page = 0
 
             if selected_paths:
-                self._start_local_scan(selected_paths, force_sync=True)
+                self._start_local_scan(selected_paths)
             else:
-                self.indexer.cursor.execute(
-                    "DELETE FROM files WHERE source='local'")
-                self.indexer.cursor.execute(
-                    "DELETE FROM search_index WHERE source='local'")
-                self.indexer.conn.commit()
+                self.indexer.clear_source('local')
                 self.loading_label.setText("Nenhum arquivo encontrado.")
                 self.loading_label.show()
                 self.all_files_loaded = True
 
-            self.load_next_batch()
+            list_update.load_next_batch(self)
 
-    def _start_local_scan(self, paths_to_scan, force_sync=False):
-        self.progress_bar.setVisible(True)
-        self.progress_bar.setRange(0, 0)
+    def _start_local_scan(self, paths_to_scan):
+        from src.services.local_scan import LocalScan
         self.all_loaded_label.hide()
 
         self.local_scan_thread = QThread()
-        self.local_scan_worker = LocalScanWorker(
-            db_name=self.indexer.db_name, scan_path=paths_to_scan, force_sync=force_sync)
+        self.local_scan_worker = LocalScan(self.indexer.db_name, paths_to_scan)
         self.local_scan_worker.moveToThread(self.local_scan_thread)
 
-        self.local_scan_worker.finished.connect(self.on_local_scan_finished)
-        self.local_scan_worker.update_status_signal.connect(
-            self.status_bar.showMessage)
-        self.local_scan_worker.progress_update.connect(
-            self.update_local_scan_progress)
+        self.local_scan_progress = QProgressDialog(
+            "Escaneando arquivos locais...", "Cancelar", 0, 100, self)
+        self.local_scan_progress.setWindowModality(self.windowModality())
+        self.local_scan_progress.setAutoClose(True)
+        self.local_scan_progress.setAutoReset(True)
+        self.local_scan_progress.setFixedSize(400, 150)
+        self.local_scan_progress.setStyleSheet("""
+            QProgressBar { min-height: 25px; border: 1px solid #ccc; border-radius: 5px; text-align: center; }
+            QProgressBar::chunk { background-color: #1976d2; border-radius: 5px; }
+        """)
+
+        self.total_files_to_process = 0
+
+        def on_total_found(total):
+            self.total_files_to_process = total
+            print(f"DEBUG: Total de arquivos a processar: {total:,}")
+
+        def update_progress(value):
+            if self.total_files_to_process > 0:
+                percent = min(
+                    98, int((value / self.total_files_to_process) * 100))
+            else:
+                percent = min(98, int(value / 1000))
+
+            self.local_scan_progress.setValue(percent)
+            print(
+                f"DEBUG: Progresso - {value:,}/{self.total_files_to_process:,} arquivos ({percent}%)")
+
+        def update_status(msg):
+            self.local_scan_progress.setLabelText(msg)
+            self.status_bar.showMessage(msg, 2000)
+
+        def on_finished():
+            self.local_scan_progress.setValue(100)
+            self.local_scan_progress.setLabelText("Escaneamento concluído.")
+            self.local_scan_progress.close()
+            self.on_local_scan_finished()
+
+        self.local_scan_worker.total_files_found.connect(on_total_found)
+        self.local_scan_worker.progress_update.connect(update_progress)
+        self.local_scan_worker.update_status_signal.connect(update_status)
+        self.local_scan_worker.finished.connect(on_finished)
+
+        def cancel_scan():
+            print("DEBUG: Botão cancelar pressionado")
+            self.local_scan_worker.terminate()
+            self.local_scan_progress.close()
+
+        self.local_scan_progress.canceled.connect(cancel_scan)
 
         self.local_scan_thread.started.connect(self.local_scan_worker.run)
+
+        self.local_scan_progress.show()
         self.local_scan_thread.start()
 
     def on_local_scan_finished(self):
-        # Recriar indexador e search engine para garantir nova conexão
-        from .database import FileIndexer
-        from .search import SearchEngine
+        if self.local_scan_worker:
+            try:
+                self.local_scan_worker.finished.disconnect(
+                    self.on_local_scan_finished)
+            except TypeError:
+                pass
+
         self.indexer = FileIndexer()
         self.search_engine = SearchEngine(self.indexer)
         try:
             file_count = self.indexer.get_file_count(source='local')
             self.tray_icon.showMessage("Sincronização Local Concluída",
-                                       f"Escaneamento concluido. {file_count} arquivos locais indexados", QSystemTrayIcon.MessageIcon.Information, 3000)
+                                       f"Escaneamento concluído. {file_count} arquivos locais indexados", QSystemTrayIcon.MessageIcon.Information, 3000)
         except Exception as e:
             print(f"Erro ao acessar banco em on_local_scan_finished: {e}")
             self.tray_icon.showMessage("Sincronização Local Concluída",
-                                       "Escaneamento concluido.", QSystemTrayIcon.MessageIcon.Information, 3000)
+                                       "Escaneamento concluído.", QSystemTrayIcon.MessageIcon.Information, 3000)
 
         self.status_bar.showMessage("Escaneamento local concluído.", 5000)
-        self.progress_bar.setVisible(False)
-        self.local_scan_thread.quit()
-        self.local_scan_thread.wait()
-        self.local_scan_worker.deleteLater()
-        self.local_scan_thread.deleteLater()
+
+        if self.local_scan_thread:
+            self.local_scan_thread.quit()
+            self.local_scan_thread.wait()
+
         self.local_scan_worker = None
         self.local_scan_thread = None
-
-        try:
-            self.indexer.ensure_conn()
-            self.indexer.conn.commit()
-            self.indexer.conn.close()
-            self.indexer.conn = None
-        except Exception as e:
-            print(f"[DEBUG UI] Erro ao reiniciar conexão do banco: {e}")
+        self.local_scan_progress = None
 
         self.current_view = 'local'
+        self.current_filter = "all"
         self.advanced_filters = {}
-        self.extension_combo.setCurrentIndex(0)
-        self._populate_extension_combo()
-        self.clear_display()
-        self.load_next_batch()
-        if hasattr(self.indexer, '_paged_cache'):
-            self.indexer._paged_cache.clear()
-        self.apply_advanced_filters()
-
-        print("✅ Scan local concluído - verificando se deve iniciar Drive sync")
-
-        settings = load_settings()
-        has_saved_config = bool(settings.get('scan_paths') and len(
-            settings.get('scan_paths', [])) > 0)
-
-        if has_saved_config and hasattr(self, 'service') and self.service:
-            print("🔄 Iniciando Drive sync automaticamente após scan local")
-            self._start_drive_sync_if_needed()
-        else:
-            print("⚠️ Pulando sync automático (primeira execução ou não autenticado)")
+        self.current_page = 0
+        self.all_files_loaded = False
+        list_update.clear_display(self)
+        self.main_bar.category_combo.setCurrentIndex(0)
+        list_update.load_next_batch(self)
+        if hasattr(self.search_engine, '_paged_cache'):
+            self.search_engine._paged_cache.clear()
 
     def update_local_scan_progress(self, files_processed):
         self.status_bar.showMessage(
             f"Escaneando arquivos locais... {files_processed} arquivos processados.")
-
-    def _start_drive_sync_if_needed(self):
-        try:
-            import datetime
-            os.makedirs('data', exist_ok=True)
-            with open('data/last_sync.txt', 'r') as f:
-                last_sync_str = f.read().strip()
-
-            if last_sync_str == '1970-01-01T00:00:00.000Z':
-                print("🔄 Primeira sincronização do Drive necessária")
-                self._start_drive_sync()
-                return
-
-            last_time = datetime.datetime.fromisoformat(
-                last_sync_str.replace('Z', '+00:00'))
-            now = datetime.datetime.now(datetime.timezone.utc)
-
-            diff_minutes = (now - last_time).total_seconds() / 60
-            print(f"🕐 Última sync Drive: {diff_minutes:.1f} minutos atrás")
-
-            if diff_minutes < 30:
-                print(f"⏭️ Pulando sync Drive (muito recente)")
-            else:
-                print(f"🔄 Executando sync Drive (tempo suficiente)")
-                self._start_drive_sync()
-
-        except Exception as e:
-            print(f"⚠️ Erro ao verificar timestamp Drive, fazendo sync: {e}")
-            self._start_drive_sync()
 
     def _start_auth(self, auto=False):
         if self.auth_thread and self.auth_thread.isRunning():
@@ -1301,13 +1038,13 @@ class DriveFileGalleryApp(QMainWindow):
                 "Abrindo navegador para autenticação...", 5000)
             self.progress_bar.setVisible(True)
             self.progress_bar.setRange(0, 0)
-            self.login_button.setEnabled(False)
+            self.main_bar.login_button.setEnabled(False)
         else:
             self.status_bar.showMessage(
                 "Verificando autenticação automática...", 5000)
             self.progress_bar.setVisible(True)
             self.progress_bar.setRange(0, 0)
-            self.login_button.setEnabled(False)
+            self.main_bar.login_button.setEnabled(False)
 
         self.auth_thread = QThread()
         self.auth_worker = AuthWorker()
@@ -1321,26 +1058,27 @@ class DriveFileGalleryApp(QMainWindow):
 
     def on_auth_success(self, service):
         self.progress_bar.setVisible(False)
-        self.login_button.setEnabled(True)
+        self.main_bar.login_button.setEnabled(True)
         self.status_bar.showMessage(
             "Login bem-sucedido.", 5000)
-        self.auth_status_label.setText("Logado com Google")
         self.service = service
         self.update_ui_for_auth_state(True)
+
+        self.main_bar.update_profile(service)
+
         settings = load_settings()
         has_saved_config = bool(settings.get('scan_paths') and len(
             settings.get('scan_paths', [])) > 0)
-        self.load_next_batch()
+        list_update.load_next_batch(self)
 
         self.auth_thread.quit()
         self.auth_thread.wait()
 
     def on_auth_fail(self, error_message):
         self.progress_bar.setVisible(False)
-        self.login_button.setEnabled(True)
+        self.main_bar.login_button.setEnabled(True)
         QMessageBox.critical(self, "Erro de Autenticação", error_message)
         self.status_bar.showMessage("Login falhou.", 5000)
-        self.auth_status_label.setText("Não Autenticado")
 
         self.auth_thread.quit()
         self.auth_thread.wait()
@@ -1355,28 +1093,25 @@ class DriveFileGalleryApp(QMainWindow):
                 self.auth_worker.remove_token()
             self.status_bar.showMessage("Logout bem-sucedido.", 5000)
             self.service = None
-            self.indexer.ensure_conn()
-            self.indexer.cursor.execute(
-                "DELETE FROM files WHERE source='drive'")
-            self.indexer.cursor.execute(
-                "DELETE FROM search_index WHERE source='drive'")
-            self.indexer.conn.commit()
+            self.indexer.clear_source('drive')
             self.update_ui_for_auth_state(False)
-            self.auth_status_label.setText("Não Autenticado")
+
+            self.main_bar.reset_profile()
+
             self.current_view = 'local'
             self.current_folder_id = None
-            self.load_next_batch()
+            list_update.load_next_batch(self)
         except Exception as e:
             print(f"Erro ao fazer logout: {e}")
             QMessageBox.warning(self, "Erro", f"Falha ao fazer logout: {e}")
 
     def _start_drive_sync(self):
-        print("🔄 _start_drive_sync chamado")
+        print("🔄 _start_drive_sync chamado pelo usuário")
 
-        if self.drive_sync_thread and self.drive_sync_thread.isRunning():
-            print("⚠️ Sincronização já em andamento")
-            self.status_bar.showMessage(
-                "Sincronização do Drive já em andamento...", 5000)
+        if self.drive_sync_running:
+            print("⚠️ Drive sync já está em execução - ignorando nova solicitação")
+            QMessageBox.information(
+                self, "Aviso", "Sincronização do Drive já está em andamento.")
             return
 
         if not self.service:
@@ -1385,95 +1120,12 @@ class DriveFileGalleryApp(QMainWindow):
                 self, "Erro", "Não autenticado no Google Drive.")
             return
 
-        print(
-            f"✅ Iniciando sincronização. Service: {self.service is not None}")
+        self.drive_sync_running = True
+        print("🚀 Iniciando nova sincronização do Drive...")
 
-        from .widgets import DriveFolderDialog
-        folder_dialog = DriveFolderDialog(self.service, self)
+        start_drive_folder_processing(
+            self, self.service, self.indexer, force_dialog=True)
 
-        if folder_dialog.exec() != QDialog.DialogCode.Accepted:
-            print("❌ Usuário cancelou a seleção de pastas")
-            return
-
-        folder_dialog.save_settings()
-        selected_folders = folder_dialog.get_selected_folders()
-
-        print(f"📁 Pastas selecionadas: {selected_folders}")
-
-        try:
-            self.indexer.ensure_conn()
-            file_count = self.indexer.get_file_count(source='drive')
-        except Exception as e:
-            print(f"Erro ao verificar contagem de arquivos: {e}")
-            file_count = 0
-
-        if file_count == 0:
-            progress = QProgressDialog(
-                "Sincronizando arquivos...", "Cancelar", 0, 100, self)
-            progress.setWindowModality(Qt.WindowModality.WindowModal)
-            progress.setAutoClose(True)
-            progress.setAutoReset(True)
-            progress.setFixedSize(400, 150)
-            progress.setStyleSheet("""
-        QProgressBar {
-            min-height: 25px;  /* Barra mais grossa */
-            border: 1px solid #ccc;
-            border-radius: 5px;
-            text-align: center;
-        }
-        QProgressBar::chunk {
-            background-color: #4CAF50;  /* Cor verde para progresso */
-            border-radius: 5px;
-        }
-    """)
-
-            self.drive_sync_thread = QThread()
-            self.drive_sync_worker = DriveSyncWorker(
-                self.service, db_name=self.indexer.db_name, force_sync=False, selected_folders=selected_folders)
-            self.drive_sync_worker.moveToThread(self.drive_sync_thread)
-
-            self.drive_sync_worker.progress_update.connect(
-                self.update_drive_sync_progress)
-            self.drive_sync_worker.update_status.connect(
-                self.update_drive_status_message)
-            self.drive_sync_worker.progress_update.connect(
-                lambda value, msg: (progress.setValue(value), progress.setLabelText(msg)))
-            self.drive_sync_worker.sync_finished.connect(
-                lambda: progress.close())
-            self.drive_sync_worker.sync_failed.connect(
-                lambda: progress.close())
-            progress.canceled.connect(self.drive_sync_worker.terminate)
-
-            self.drive_sync_thread.started.connect(self.drive_sync_worker.run)
-            self.drive_sync_thread.start()
-            progress.exec()
-
-            self.drive_sync_thread.quit()
-            self.drive_sync_thread.wait()
-            self.drive_sync_worker.deleteLater()
-            self.drive_sync_thread.deleteLater()
-            self.drive_sync_worker = None
-            self.drive_sync_thread = None
-        else:
-            self.progress_bar.setVisible(True)
-            self.progress_bar.setRange(0, 0)
-
-            self.drive_sync_thread = QThread()
-            self.drive_sync_worker = DriveSyncWorker(
-                self.service, db_name=self.indexer.db_name, force_sync=False, selected_folders=selected_folders)
-            self.drive_sync_worker.moveToThread(self.drive_sync_thread)
-
-            self.drive_sync_worker.sync_finished.connect(
-                self.on_drive_sync_finished)
-            self.drive_sync_worker.sync_failed.connect(
-                self.on_drive_sync_failed)
-            self.drive_sync_worker.update_status.connect(
-                self.status_bar.showMessage)
-            self.drive_sync_worker.progress_update.connect(
-                self.update_drive_sync_progress)
-
-            self.drive_sync_thread.started.connect(self.drive_sync_worker.run)
-            self.drive_sync_thread.start()
 
     def _show_drive_folder_selection(self):
         if not self.service:
@@ -1481,7 +1133,6 @@ class DriveFileGalleryApp(QMainWindow):
                 self, "Erro", "Não autenticado no Google Drive.")
             return
 
-        from .widgets import DriveFolderDialog
         folder_dialog = DriveFolderDialog(self.service, self)
 
         if folder_dialog.exec() == QDialog.DialogCode.Accepted:
@@ -1489,39 +1140,224 @@ class DriveFileGalleryApp(QMainWindow):
             QMessageBox.information(
                 self, "Configuração Salva",
                 "As configurações de pastas do Google Drive foram salvas.\n\n"
-                "Use 'Atualizar Drive' para sincronizar com as pastas selecionadas.")
+                "Use 'Selecionar Pastas do Drive' para sincronizar com as pastas selecionadas.")
 
     def on_drive_sync_finished(self):
+        self.drive_sync_running = False
+        print("✅ Drive sync finalizado - flag liberada")
+
+        if self.drive_sync_running:
+            print("⚠️ AVISO: Flag ainda está True após liberação!")
+
+        prev_selected_id = None
+        try:
+            selected_indexes = self.file_list_view.selectedIndexes()
+            if selected_indexes:
+                current_item = self.file_list_model.data(
+                    selected_indexes[0], Qt.ItemDataRole.UserRole)
+                if current_item:
+                    prev_selected_id = current_item.get(
+                        'id') or current_item.get('path')
+        except Exception:
+            prev_selected_id = None
+
         self.status_bar.showMessage("Sincronização do Drive concluída.", 5000)
         self.progress_bar.setVisible(False)
-        self.drive_sync_thread.quit()
-        self.drive_sync_thread.wait()
-        self.drive_sync_worker.deleteLater()
-        self.drive_sync_thread.deleteLater()
-        self.drive_sync_worker = None
-        self.drive_sync_thread = None
 
-        self.current_view = None
+        self.indexer = FileIndexer()
+        self.search_engine = SearchEngine(self.indexer)
+
+        if hasattr(self.indexer, '_paged_cache'):
+            self.indexer._paged_cache.clear()
+        if hasattr(self.indexer, '_count_cache'):
+            self.indexer._count_cache.clear()
+        if hasattr(self.search_engine, '_paged_cache'):
+            self.search_engine._paged_cache.clear()
+
+        self.current_page = 0
+        self.all_files_loaded = False
+        self.current_view = 'local'
         self.current_folder_id = None
         self.advanced_filters = {}
-        self.extension_combo.setCurrentIndex(0)
-        self._populate_extension_combo()
-        self.clear_display()
-        self.load_next_batch()
 
-        self.apply_advanced_filters()
+        list_update.clear_display(self)
+
+        QTimer.singleShot(
+            100, lambda: self._force_refresh_after_sync(prev_selected_id))
+
+    def _force_refresh_after_sync(self, prev_selected_id=None):
+        try:
+            list_update.load_next_batch(self)
+
+            if prev_selected_id:
+                QTimer.singleShot(
+                    200, lambda: self._reselect_and_refresh(prev_selected_id))
+
+            selected_indexes = self.file_list_view.selectedIndexes()
+            if selected_indexes:
+                current_item = self.file_list_model.data(
+                    selected_indexes[0], Qt.ItemDataRole.UserRole)
+                if current_item:
+                    file_id = current_item.get(
+                        'id') or current_item.get('path')
+                    if file_id:
+                        QTimer.singleShot(
+                            300, lambda: self._refresh_details_by_id(file_id))
+
+            self.status_bar.showMessage(
+                "Interface atualizada com novos metadados.", 3000)
+
+        except Exception as e:
+            print(f"Erro ao forçar atualização após sincronização: {e}")
+            self.status_bar.showMessage("Erro ao atualizar interface.", 3000)
+
+    def on_metadata_fusion_completed(self, fusion_count):
+        try:
+            print(
+                f"[UI] Fusão de metadados concluída: {fusion_count} arquivos fusionados")
+
+            if hasattr(self.search_engine, '_paged_cache'):
+                self.search_engine._paged_cache.clear()
+
+            if fusion_count > 0:
+                self.status_bar.showMessage(
+                    f"Metadados fusionados: {fusion_count} arquivos atualizados", 3000)
+
+                selected_indexes = self.file_list_view.selectedIndexes()
+                if selected_indexes:
+                    current_item = self.file_list_model.data(
+                        selected_indexes[0], Qt.ItemDataRole.UserRole)
+                    if current_item:
+                        file_id = current_item.get(
+                            'id') or current_item.get('path')
+                        if file_id:
+                            self._update_file_in_model_and_details(file_id)
+
+        except Exception as e:
+            print(f"Erro no callback de fusão de metadados: {e}")
+
+    def _update_file_in_model_and_details(self, file_id):
+        try:
+            self.indexer.ensure_conn()
+            self.indexer.cursor.execute(
+                """
+                SELECT file_id, name, path, mimeType, source, description, thumbnailLink, thumbnailPath, size, modifiedTime, createdTime, parentId, starred
+                FROM files WHERE file_id = ?
+                """,
+                (file_id,)
+            )
+            row = self.indexer.cursor.fetchone()
+            if row:
+                updated_item = {
+                    'id': row[0],
+                    'name': row[1],
+                    'path': row[2],
+                    'mimeType': row[3],
+                    'source': row[4],
+                    'description': row[5],
+                    'thumbnailLink': row[6],
+                    'thumbnailPath': row[7],
+                    'size': row[8],
+                    'modifiedTime': row[9],
+                    'createdTime': row[10],
+                    'parentId': row[11],
+                    'starred': bool(row[12]) if len(row) > 12 else False,
+                }
+
+                self.file_list_model.updateFileById(file_id, updated_item)
+
+                selected_indexes = self.file_list_view.selectedIndexes()
+                if selected_indexes:
+                    current_item = self.file_list_model.data(
+                        selected_indexes[0], Qt.ItemDataRole.UserRole)
+                    if current_item:
+                        current_id = current_item.get(
+                            'id') or current_item.get('path')
+                        if current_id == file_id:
+                            self.details_panel.update_details(updated_item)
+
+        except Exception as e:
+            print(f"Erro ao atualizar arquivo no modelo: {e}")
+
+    def _refresh_details_by_id(self, file_id: str):
+        try:
+            if not file_id:
+                return
+            self.indexer.ensure_conn()
+            self.indexer.cursor.execute(
+                """
+                SELECT file_id, name, path, mimeType, source, description, thumbnailLink, thumbnailPath, size, modifiedTime, createdTime, parentId, starred
+                FROM files WHERE file_id = ?
+                """,
+                (file_id,)
+            )
+            row = self.indexer.cursor.fetchone()
+            if not row:
+                return
+            updated_item = {
+                'id': row[0],
+                'name': row[1],
+                'path': row[2],
+                'mimeType': row[3],
+                'source': row[4],
+                'description': row[5],
+                'thumbnailLink': row[6],
+                'thumbnailPath': row[7],
+                'size': row[8],
+                'modifiedTime': row[9],
+                'createdTime': row[10],
+                'parentId': row[11],
+                'starred': bool(row[12]) if len(row) > 12 else False,
+            }
+            self.details_panel.update_details(updated_item)
+        except Exception as e:
+            print(f"[UI] Falha ao atualizar detalhes pós-sync: {e}")
+
+    def _find_model_index_by_id(self, file_id: str):
+        try:
+            if not file_id:
+                return None
+            model = self.file_list_model
+            rows = model.rowCount()
+            for row in range(rows):
+                idx = model.index(row, 0)
+                item = model.data(idx, Qt.ItemDataRole.UserRole)
+                if not item:
+                    continue
+                item_id = item.get('id') or item.get('path')
+                if item_id == file_id:
+                    return idx
+            return None
+        except Exception:
+            return None
+
+    def _reselect_and_refresh(self, file_id: str):
+        try:
+            idx = self._find_model_index_by_id(file_id)
+            if idx:
+                sel_model = self.file_list_view.selectionModel()
+                if sel_model:
+                    sel_model.select(
+                        idx, QItemSelectionModel.SelectionFlag.ClearAndSelect | QItemSelectionModel.SelectionFlag.Rows)
+                    self.file_list_view.setCurrentIndex(idx)
+                    self.file_list_view.scrollTo(idx)
+                self._refresh_details_by_id(file_id)
+                return
+            self._refresh_details_by_id(file_id)
+        except Exception as e:
+            print(f"[UI] Falha ao re-selecionar/atualizar: {e}")
 
     def on_drive_sync_failed(self, error_message):
+        self.drive_sync_running = False
+        print(f"❌ Drive sync falhou - flag liberada: {error_message}")
+
+        if self.drive_sync_running:
+            print("⚠️ AVISO: Flag ainda está True após erro!")
+
         self.status_bar.showMessage(error_message, 5000)
         self.tray_icon.showMessage(
             "Erro de Sincronização", f"Falha na sincronização do Google Drive: {error_message}", QSystemTrayIcon.MessageIcon.Critical, 5000)
         self.progress_bar.setVisible(False)
-        self.drive_sync_thread.quit()
-        self.drive_sync_thread.wait()
-        self.drive_sync_worker.deleteLater()
-        self.drive_sync_thread.deleteLater()
-        self.drive_sync_worker = None
-        self.drive_sync_thread = None
         self.update_ui_for_auth_state(False)
 
     def update_drive_sync_progress(self, value, msg):
@@ -1532,79 +1368,6 @@ class DriveFileGalleryApp(QMainWindow):
     def update_drive_status_message(self, msg):
         self.status_bar.showMessage(msg)
 
-    def clear_display(self):
-        self.all_loaded_label.hide()
-        self.file_list_model.setFiles([])
-
-        if hasattr(self.details_panel, 'thumbnail_thread') and self.details_panel.thumbnail_thread:
-            try:
-                if self.details_panel.thumbnail_thread.isRunning():
-                    self.details_panel.thumbnail_thread.quit()
-                    if not self.details_panel.thumbnail_thread.wait(2000):
-                        pass
-            except Exception as e:
-                pass
-        if hasattr(self.details_panel, 'thumbnail_worker') and self.details_panel.thumbnail_worker:
-            try:
-                self.details_panel.thumbnail_worker.deleteLater()
-            except Exception as e:
-                pass
-
-        self.details_panel.thumbnail_worker = None
-        self.details_panel.thumbnail_thread = None
-        self.details_panel.hide()
-
-    def load_next_batch(self):
-        if self.is_loading or self.all_files_loaded:
-            return
-
-        self.is_loading = True
-        self.loading_label.show()
-        self.progress_bar.setVisible(True)
-        self.progress_bar.setRange(0, 0)
-        self.status_bar.showMessage("Carregando arquivos...", 0)
-
-        try:
-            self.indexer.ensure_conn()
-            search_all_sources = bool(
-                self.search_term and self.is_authenticated)
-            source = self.current_view if not search_all_sources else None
-
-            from .utils import filter_existing_files
-
-            files_raw = self._load_files_for_filters(source)
-            print(f"DEBUG: files_raw (primeiro item): {files_raw[0] if files_raw else 'VAZIO'}")
-            files_to_add = filter_existing_files(
-                files_raw, path_key='path' if files_raw and 'path' in files_raw[0] else 'caminho')
-            print(f"DEBUG: files_to_add (primeiro item): {files_to_add[0] if files_to_add else 'VAZIO'}")
-            print(f"DEBUG: Carregados {len(files_to_add)} arquivos para filtro '{self.current_filter}', source='{source}'")
-
-            if not files_to_add:
-                self.all_files_loaded = True
-                if not self.file_list_model.rowCount():
-                    self.loading_label.setText("Nenhum arquivo encontrado.")
-                    self.loading_label.show()
-                else:
-                    self.loading_label.hide()
-                    self.all_loaded_label.show()
-            else:
-                self._add_thumbnail_widgets(files_to_add)
-                if len(files_to_add) < self.page_size:
-                    self.all_files_loaded = True
-                    self.all_loaded_label.show()
-                self.current_page += 1
-                self.loading_label.hide()
-
-        except Exception as e:
-            print(f"Erro ao carregar arquivos: {e}")
-            self.loading_label.setText("Erro ao carregar arquivos.")
-            self.loading_label.show()
-        finally:
-            self.is_loading = False
-            self.scroll_loading = False
-            self.progress_bar.setVisible(False)
-            self.status_bar.showMessage("Arquivos carregados.", 3000)
-
     def debug_system_status(self):
         print(f"\n" + "="*60)
         print(f"🖥️ DEBUG STATUS DO SISTEMA")
@@ -1614,11 +1377,9 @@ class DriveFileGalleryApp(QMainWindow):
         print(f"🔐 Google Drive: {auth_status}")
 
         local_scan_running = self.local_scan_thread and self.local_scan_thread.isRunning()
-        drive_sync_running = self.drive_sync_thread and self.drive_sync_thread.isRunning()
         print(
             f"🔄 Scan local: {'⏳ Executando' if local_scan_running else '✅ Parado'}")
-        print(
-            f"🔄 Sync Drive: {'⏳ Executando' if drive_sync_running else '✅ Parado'}")
+        print("🔄 Sync Drive: ✅ Gerenciado pelo processing.py")
 
         try:
             local_count = self.indexer.get_file_count(source='local')
@@ -1683,20 +1444,6 @@ class DriveFileGalleryApp(QMainWindow):
                     print(f"   '{original}' → '{normalized}'")
             else:
                 print(f"\n📝 Nenhum arquivo com acentos encontrado no índice")
-
-            try:
-                with open('last_sync.txt', 'r') as f:
-                    last_drive_sync = f.read().strip()
-                print(f"\n⏰ Última sync Drive: {last_drive_sync}")
-            except FileNotFoundError:
-                print(f"\n⏰ Última sync Drive: Nunca")
-
-            try:
-                with open('last_local_sync.txt', 'r') as f:
-                    last_local_sync = f.read().strip()
-                print(f"⏰ Última sync Local: {last_local_sync}")
-            except FileNotFoundError:
-                print(f"⏰ Última sync Local: Nunca")
 
         except Exception as e:
             print(f"❌ Erro ao acessar banco: {e}")
@@ -1776,99 +1523,6 @@ class DriveFileGalleryApp(QMainWindow):
 
         print(f"="*60)
 
-    def _load_files_for_filters(self, source):
-        print(
-            f"DEBUG: _load_files_for_filters chamado com source='{source}', current_filter='{self.current_filter}', advanced_filters='{self.advanced_filters}'")
-        folder_id = self.current_folder_id
-        filter_type = self.current_filter
-
-        if not self.search_term and folder_id is None:
-            if self.advanced_filters.get('is_starred') or self.advanced_filters.get('extension') not in [None, '']:
-                filter_type = 'all'
-                local_files = self.search_engine.load_files_paged(
-                    'local', self.current_page, self.page_size, None, self.current_sort, filter_type, None, self.advanced_filters, explorer_special=self.explorer_special_active
-                )
-                drive_files = []
-                if self.is_authenticated and self.show_drive_metadata:
-                    drive_files = self.search_engine.load_files_paged(
-                        'drive', self.current_page, self.page_size, None, self.current_sort, filter_type, None, self.advanced_filters, explorer_special=self.explorer_special_active
-                    )
-                all_files = local_files + drive_files
-                if self.current_sort == "created_desc":
-                    all_files = sorted(all_files, key=lambda x: x.get(
-                        "createdTime", 0), reverse=True)
-                elif self.current_sort == "created_asc":
-                    all_files = sorted(
-                        all_files, key=lambda x: x.get("createdTime", 0))
-                elif self.current_sort == "modified_desc":
-                    all_files = sorted(all_files, key=lambda x: x.get(
-                        "modifiedTime", 0), reverse=True)
-                elif self.current_sort == "modified_asc":
-                    all_files = sorted(
-                        all_files, key=lambda x: x.get("modifiedTime", 0))
-                elif self.current_sort == "name_asc":
-                    all_files = sorted(
-                        all_files, key=lambda x: x.get("name", "").lower())
-                elif self.current_sort == "name_desc":
-                    all_files = sorted(all_files, key=lambda x: x.get(
-                        "name", "").lower(), reverse=True)
-                return all_files
-            else:
-                local_files = self.search_engine.load_files_paged(
-                    'local', self.current_page, self.page_size, None, self.current_sort, filter_type, None, self.advanced_filters, explorer_special=self.explorer_special_active
-                )
-                drive_files = []
-                if self.is_authenticated and self.show_drive_metadata:
-                    drive_files = self.search_engine.load_files_paged(
-                        'drive', self.current_page, self.page_size, None, self.current_sort, filter_type, None, self.advanced_filters, explorer_special=self.explorer_special_active
-                    )
-                all_files = local_files + drive_files
-                if self.current_sort == "created_desc":
-                    all_files = sorted(all_files, key=lambda x: x.get(
-                        "createdTime", 0), reverse=True)
-                elif self.current_sort == "created_asc":
-                    all_files = sorted(
-                        all_files, key=lambda x: x.get("createdTime", 0))
-                elif self.current_sort == "modified_desc":
-                    all_files = sorted(all_files, key=lambda x: x.get(
-                        "modifiedTime", 0), reverse=True)
-                elif self.current_sort == "modified_asc":
-                    all_files = sorted(
-                        all_files, key=lambda x: x.get("modifiedTime", 0))
-                elif self.current_sort == "name_asc":
-                    all_files = sorted(
-                        all_files, key=lambda x: x.get("name", "").lower())
-                elif self.current_sort == "name_desc":
-                    all_files = sorted(all_files, key=lambda x: x.get(
-                        "name", "").lower(), reverse=True)
-                return all_files
-        else:
-            if self.advanced_filters.get('extension'):
-                filter_type = 'all'
-            files = self.search_engine.load_files_paged(
-                source, self.current_page, self.page_size, self.search_term,
-                self.current_sort, filter_type, folder_id, self.advanced_filters, explorer_special=self.explorer_special_active
-            )
-            if not self.show_drive_metadata:
-                files = [f for f in files if not (
-                    f.get('source') == 'drive' and not f.get('path'))]
-            if self.current_sort == "created_desc":
-                files = sorted(files, key=lambda x: x.get(
-                    "createdTime", 0), reverse=True)
-            elif self.current_sort == "created_asc":
-                files = sorted(files, key=lambda x: x.get("createdTime", 0))
-            elif self.current_sort == "modified_desc":
-                files = sorted(files, key=lambda x: x.get(
-                    "modifiedTime", 0), reverse=True)
-            elif self.current_sort == "modified_asc":
-                files = sorted(files, key=lambda x: x.get("modifiedTime", 0))
-            elif self.current_sort == "name_asc":
-                files = sorted(files, key=lambda x: x.get("name", "").lower())
-            elif self.current_sort == "name_desc":
-                files = sorted(files, key=lambda x: x.get(
-                    "name", "").lower(), reverse=True)
-            return files
-
     def _add_thumbnail_widgets(self, files_to_add):
         if self.current_page == 0:
             self.file_list_model.setFiles(files_to_add)
@@ -1881,11 +1535,13 @@ class DriveFileGalleryApp(QMainWindow):
 
     def on_double_click(self, file_item):
         if file_item and file_item.get('mimeType') in ['application/vnd.google-apps.folder', 'folder']:
+            self.search_term = ""
+            self.main_bar.search_entry.clear()
             self.current_page = 0
             self.all_files_loaded = False
-            self.clear_display()
+            list_update.clear_display(self)
             self.current_folder_id = file_item['id']
-            self.load_next_batch()
+            list_update.load_next_batch(self)
         elif file_item:
             if file_item.get('source') == 'local' and file_item.get('path'):
                 try:
@@ -1906,7 +1562,7 @@ class DriveFileGalleryApp(QMainWindow):
                     selected_indexes[0], Qt.ItemDataRole.UserRole)
                 self.on_double_click(file_item)
         elif event.key() == Qt.Key.Key_F12:
-            current_search = self.search_entry.text().strip()
+            current_search = self.main_bar.search_entry.text().strip()
             if current_search:
                 self.search_engine.debug_search_normalization(current_search)
             else:
@@ -1916,84 +1572,16 @@ class DriveFileGalleryApp(QMainWindow):
         elif event.key() == Qt.Key.Key_F10:
             self.debug_test_accent_samples()
         elif event.key() == Qt.Key.Key_F7:
-            self.debug_cpu_profile()
+            print("🔧 F7: Debug CPU Profile (não implementado)")
         elif event.key() == Qt.Key.Key_F8:
-            self.debug_memory_snapshot()
+            print("📊 F8: Debug Memory Snapshot (não implementado)")
         elif event.key() == Qt.Key.Key_F9:
-            self.debug_memory_stats()
+            print("💾 F9: Debug Memory Stats (não implementado)")
         elif event.key() == Qt.Key.Key_S and event.modifiers() == Qt.KeyboardModifier.ControlModifier:
             print("🔄 Atalho Ctrl+S - Iniciando sincronização do Google Drive...")
             self._start_drive_sync()
         else:
             super().keyPressEvent(event)
-
-    def debug_memory_snapshot(self):
-        print("\n" + "="*50)
-        print("🔍 F8 - MEMORY SNAPSHOT")
-        print("="*50)
-
-        if not memory_profiler.is_tracing:
-            memory_profiler.start_tracing()
-            print("📊 Profiler iniciado automaticamente")
-
-        snapshot = memory_profiler.take_snapshot()
-        if snapshot:
-            print(f"📸 Snapshot capturado:")
-            print(f"   RSS: {snapshot['rss_mb']:.1f} MB")
-            print(f"   VMS: {snapshot['vms_mb']:.1f} MB")
-            print(f"   CPU: {snapshot['cpu_percent']:.1f}%")
-
-            consumers = memory_profiler.analyze_top_consumers(5)
-            if consumers:
-                print("\n🔥 Top 5 Memory Consumers:")
-                for i, consumer in enumerate(consumers, 1):
-                    print(
-                        f"   {i}. {consumer['size_mb']:.2f}MB - {consumer['filename']}")
-        else:
-            print("❌ Erro ao capturar snapshot")
-
-        print("="*50 + "\n")
-
-    def debug_memory_stats(self):
-        print("\n" + "="*50)
-        print("📊 F9 - MEMORY STATS")
-        print("="*50)
-
-        stats = memory_profiler.get_memory_stats()
-        if stats:
-            print(f"💾 Memória Atual: {stats.get('current_rss_mb', 0):.1f} MB")
-            print(
-                f"🖥️ Virtual Memory: {stats.get('current_vms_mb', 0):.1f} MB")
-            print(f"⚡ CPU Usage: {stats.get('current_cpu_percent', 0):.1f}%")
-            print(f"📸 Snapshots: {stats.get('snapshots_count', 0)}")
-
-            if 'memory_growth_mb' in stats:
-                growth = stats['memory_growth_mb']
-                if growth > 0:
-                    print(f"📈 Crescimento: +{growth:.1f} MB")
-                else:
-                    print(f"📉 Variação: {growth:.1f} MB")
-        else:
-            print("❌ Nenhuma estatística disponível")
-            print("💡 Pressione F8 primeiro para iniciar o tracking")
-
-        print("="*50 + "\n")
-
-    def debug_cpu_profile(self):
-        print("\n" + "="*50)
-        print("⚡ F7 - CPU PROFILING (5s)")
-        print("="*50)
-
-        if cpu_profiler.is_profiling:
-            result = cpu_profiler.start_profiling()
-            print("📊 CPU Profiling finalizado!")
-            print(result[:800] + "...")
-        else:
-            cpu_profiler.start_profiling()
-            print("🎯 CPU Profiling iniciado!")
-            print("💡 Pressione F7 novamente em 5s para ver resultado")
-
-        print("="*50 + "\n")
 
     def go_to_parent_folder(self):
         self.indexer.cursor.execute(

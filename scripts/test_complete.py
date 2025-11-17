@@ -1,7 +1,10 @@
-# Teste completo de todas as funcionalidades do VoxImago
+"""
+Script de teste completo - Valida todas as funcionalidades de busca e filtros do VoxImago
+Testa: busca básica, operadores FTS5, filtros por categoria, fusão de metadados
+"""
 
 import sqlite3
-from src.search import SearchEngine
+from database.search import SearchEngine
 import os
 import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))

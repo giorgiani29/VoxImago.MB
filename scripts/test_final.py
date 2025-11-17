@@ -1,4 +1,7 @@
-#Teste final completo das funcionalidades do VoxImago
+"""
+Script de teste final - Validação completa de todas as funcionalidades do VoxImago
+Testa: busca FTS5, metadados, filtros e integração completa do sistema
+"""
 
 import os
 import sys

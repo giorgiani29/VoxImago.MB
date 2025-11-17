@@ -1,9 +1,7 @@
 # Painel de detalhes do arquivo exibe informações e miniatura.
 
-
 import os
 import sys
-import sqlite3
 import subprocess
 import webbrowser
 from datetime import datetime
@@ -12,8 +10,8 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtGui import QPixmap, QFont
 from PyQt6.QtCore import Qt
-from .utils import format_size
-from .thumbnails import ThumbnailCache, ThumbnailManager
+from src.utils.utils import format_size
+from src.ui.thumbnails import ThumbnailCache, ThumbnailManager
 
 
 class FileDetailsPanel(QFrame):
@@ -140,7 +138,6 @@ class FileDetailsPanel(QFrame):
 
         self.current_file_item = file_item
 
-        # Não crie/adicione novamente os botões, apenas altere a visibilidade
         if file_item.get('source') == 'local' and file_item.get('webContentLink'):
             self.open_drive_button.setVisible(True)
         else:
@@ -239,12 +236,14 @@ class FileDetailsPanel(QFrame):
                     Qt.AspectRatioMode.KeepAspectRatio,
                     Qt.TransformationMode.SmoothTransformation
                 ))
-                conn = sqlite3.connect('data/file_index.db')
-                cursor = conn.cursor()
-                cursor.execute("UPDATE files SET thumbnailPath = ? WHERE file_id = ?",
-                               (thumbnail_path, self.current_file_item.get('id')))
-                conn.commit()
-                conn.close()
+                try:
+                    indexer = getattr(self.parent_app, 'indexer', None)
+                    if indexer:
+                        indexer.update_thumbnail_path(
+                            self.current_file_item.get('id'), thumbnail_path
+                        )
+                except Exception:
+                    pass
             else:
                 self.thumbnail_label.setPixmap(ThumbnailManager.get_generic_thumbnail(
                     self.current_file_item.get('mimeType'), size=(96, 96)))

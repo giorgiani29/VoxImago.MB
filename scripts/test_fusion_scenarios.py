@@ -1,16 +1,18 @@
-# Testes automatizados para cenários de fusão de metadados
-# Simula conflitos e valida o comportamento do sistema de fusão
+"""
+Script de teste de cenários de fusão - Simula conflitos e valida comportamento do sistema
+Testa: diferentes cenários de fusão de metadados e resolução de conflitos
+"""
 
-from src.database import FileIndexer
-from src.search import SearchEngine
 import os
 import sys
-import sqlite3
-import tempfile
-import shutil
-from datetime import datetime
-
+from database.database import FileIndexer
+from database.search import SearchEngine
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+src_path = os.path.abspath(os.path.join(
+    os.path.dirname(__file__), '..', 'src'))
+if src_path not in sys.path:
+    sys.path.insert(0, src_path)
 
 
 class FusionTestScenarios:
@@ -108,7 +110,7 @@ class FusionTestScenarios:
         return drive_files
 
     def simulate_fusion(self, drive_files):
-        from src.utils import find_local_matches
+        from src.drive.match import find_local_matches
 
         fusion_results = {
             'successful_fusions': 0,

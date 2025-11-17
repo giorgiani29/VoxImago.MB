@@ -1,3 +1,12 @@
+"""
+Módulo de busca do VoxImago.MB
+
+Responsável por:
+- Implementar o mecanismo de busca full-text (FTS5) no banco SQLite
+- Normalizar e interpretar termos de busca
+- Fornecer a classe SearchEngine para consultas, filtros e paginação
+"""
+
 import re
 import unicodedata
 import sqlite3
@@ -116,9 +125,9 @@ class SearchEngine:
 
             def quote_if_short_or_symbol(term):
                 return f'"{term}"' if len(term) <= 4 or re.match(r'^[<&#@]', term) else term
-            valid_terms = [quote_if_short_or_symbol(t.strip()) for t in (or_groups if or_groups else terms) if t and not t.startswith(
-                '-') and t.strip() and t.strip().upper() not in ['OR', 'AND']]
-            if not valid_terms:
+            valid_terms = [quote_if_short_or_symbol(t.strip()) for t in (or_groups if or_groups else terms) if t and t.strip(
+            ) and t.strip().upper() not in ['OR', 'AND'] and not t.startswith('-')]
+            if not valid_terms and not exclude_terms:
                 self._paged_cache[cache_key] = []
                 return []
             if or_groups:
@@ -126,8 +135,8 @@ class SearchEngine:
             else:
                 fts_query = ' '.join(valid_terms)
             if exclude_terms:
-                not_query = ' NOT '.join([f'"{t}"' for t in exclude_terms])
-                fts_query += f" NOT {not_query}"
+                for t in exclude_terms:
+                    fts_query += f' NOT "{t}"'
             if not fts_query.strip():
                 self._paged_cache[cache_key] = []
                 return []
@@ -151,7 +160,7 @@ class SearchEngine:
                 self._paged_cache[cache_key] = []
                 return []
             placeholders = ','.join('?' for _ in file_ids_to_fetch)
-            details_query = f"SELECT file_id, name, path, mimeType, source, description, thumbnailLink, thumbnailPath, size, modifiedTime, createdTime, parentId, starred FROM files WHERE file_id IN ({placeholders})"
+            details_query = f"SELECT file_id, name, path, mimeType, source, description, thumbnailLink, thumbnailPath, size, modifiedTime, createdTime, parentId, starred, webContentLink FROM files WHERE file_id IN ({placeholders})"
             filter_clauses = []
             filter_params = list(file_ids_to_fetch)
             if extra_filters.get('is_starred'):
@@ -173,10 +182,9 @@ class SearchEngine:
                             'images': ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.svg', '.ico', '.tiff', '.heic', '.arw', '.cr2', '.nef', '.dng', '.raf', '.orf', '.srw'],
                             'videos': ['.mp4', '.avi', '.mov', '.wmv', '.flv', '.mkv', '.webm', '.m4v', '.3gp'],
                             'documents': ['.pdf', '.doc', '.docx', '.txt', '.rtf', '.odt', '.xls', '.xlsx', '.ppt', '.pptx'],
-                            'audios': ['.mp3', '.wav', '.flac', '.aac', '.ogg', '.wma', '.m4a'],
-                            'others': []
+                            'audios': ['.mp3', '.wav', '.flac', '.aac', '.ogg', '.wma', '.m4a']
                         }
-                        if category in category_extensions and category != 'others':
+                        if category in category_extensions:
                             extensions = category_extensions[category]
                             ext_conditions = []
                             for ext in extensions:
@@ -297,10 +305,9 @@ class SearchEngine:
                             'images': ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.svg', '.ico', '.tiff'],
                             'videos': ['.mp4', '.avi', '.mov', '.wmv', '.flv', '.mkv', '.webm', '.m4v', '.3gp'],
                             'documents': ['.pdf', '.doc', '.docx', '.txt', '.rtf', '.odt', '.xls', '.xlsx', '.ppt', '.pptx'],
-                            'audios': ['.mp3', '.wav', '.flac', '.aac', '.ogg', '.wma', '.m4a'],
-                            'others': []
+                            'audios': ['.mp3', '.wav', '.flac', '.aac', '.ogg', '.wma', '.m4a']
                         }
-                        if category in category_extensions and category != 'others':
+                        if category in category_extensions:
                             extensions = category_extensions[category]
                             ext_conditions = []
                             for ext in extensions:
@@ -309,7 +316,7 @@ class SearchEngine:
                             if ext_conditions:
                                 files_where_clauses.append(
                                     f"({' OR '.join(ext_conditions)})")
-            query = f"SELECT file_id, name, path, mimeType, source, description, thumbnailLink, thumbnailPath, size, modifiedTime, createdTime, parentId, starred FROM files WHERE {' AND '.join(files_where_clauses)} ORDER BY {order_by_clause} LIMIT ? OFFSET ?"
+            query = f"SELECT file_id, name, path, mimeType, source, description, thumbnailLink, thumbnailPath, size, modifiedTime, createdTime, parentId, starred, webContentLink FROM files WHERE {' AND '.join(files_where_clauses)} ORDER BY {order_by_clause} LIMIT ? OFFSET ?"
             if explorer_special:
                 query = query.replace("WHERE", "WHERE source = 'local' AND")
             files_params.extend([page_size, offset])
@@ -329,7 +336,8 @@ class SearchEngine:
                     'modifiedTime': row[9],
                     'createdTime': row[10],
                     'parentId': row[11],
-                    'starred': bool(row[12])
+                    'starred': bool(row[12]),
+                    'webContentLink': row[13] if len(row) > 13 else ''
                 } for row in rows
             ]
             self._paged_cache[cache_key] = files

@@ -1,6 +1,7 @@
-#Encontra arquivos duplicados no Google Drive pelo hash (md5Checksum).
-#Salva os IDs duplicados em 'drive_duplicados_ids.txt'.
-
+"""
+Script para encontrar duplicatas no Google Drive - Localiza arquivos duplicados por hash MD5
+Salva lista de IDs duplicados em 'drive_duplicados_ids.txt' para posterior limpeza
+"""
 
 from googleapiclient.discovery import build
 from google.oauth2.credentials import Credentials

@@ -4,7 +4,7 @@ from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from google.auth.transport.requests import Request
-from src.utils import load_settings
+from src.utils.utils import load_settings
 import os
 
 SCOPES = ['https://www.googleapis.com/auth/drive.readonly']
@@ -13,7 +13,7 @@ CREDENTIALS_FILE = 'config/credentials.json'
 
 
 class AuthWorker(QObject):
-    authenticated = pyqtSignal(object)  # (service: Google Drive API)
+    authenticated = pyqtSignal(object)
     auth_failed = pyqtSignal(str)
 
     def __init__(self, parent=None):
@@ -21,9 +21,14 @@ class AuthWorker(QObject):
 
     def _check_initial_auth(self):
         creds = None
-        TOKEN_FILE = 'config/token.json'
-        CREDENTIALS_FILE = 'config/credentials.json'
-        from google_auth_oauthlib.flow import InstalledAppFlow
+
+        # Verificar se existe token salvo
+        if os.path.exists(TOKEN_FILE):
+            try:
+                creds = Credentials.from_authorized_user_file(
+                    TOKEN_FILE, SCOPES)
+            except Exception:
+                creds = None
 
         if creds and creds.expired and creds.refresh_token:
             try:

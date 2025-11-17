@@ -1,6 +1,7 @@
-# file_list_model.py - Modelo de dados para lista de arquivos do Vox Imago
-# Gerencia e exibe listas de arquivos na interface principal.
-
+'''
+ file_list_model.py - Modelo de dados para lista de arquivos do Vox Imago
+ Gerencia e exibe listas de arquivos na interface principal.
+'''
 from PyQt6.QtCore import Qt, QAbstractListModel, QModelIndex, QVariant
 
 
@@ -34,3 +35,14 @@ class FileListModel(QAbstractListModel):
             self._files), len(self._files) + len(files) - 1)
         self._files.extend(files)
         self.endInsertRows()
+
+    def updateFileById(self, file_id, updated_data):
+        for i, file_item in enumerate(self._files):
+            item_id = file_item.get('id') or file_item.get('path')
+            if item_id == file_id:
+                self._files[i].update(updated_data)
+                index = self.index(i, 0)
+                self.dataChanged.emit(
+                    index, index, [Qt.ItemDataRole.UserRole, Qt.ItemDataRole.DisplayRole])
+                return True
+        return False

@@ -1,13 +1,14 @@
-# thumbnails.py - Centraliza toda a lógica de thumbnails do Vox Imago
-#
-# Responsável por:
-# - Gerenciar a renderização de miniaturas (thumbnails) para arquivos locais
-# - Gerar thumbnails para imagens, vídeos, PDFs e arquivos RAW
-# - Gerenciar e consultar o cache de thumbnails
-# - Fornecer ícones genéricos para tipos de arquivo
-# - Classes principais: FileListDelegate (delegate para listas), ThumbnailManager (geração), ThumbnailCache (cache)
+''' thumbnails.py - Centraliza toda a lógica de thumbnails do Vox Imago
 
-from PyQt6.QtCore import QRect
+ Responsável por:
+ - Gerenciar a renderização de miniaturas (thumbnails) para arquivos locais
+ - Gerar thumbnails para imagens, vídeos, PDFs e arquivos RAW
+ - Gerenciar e consultar o cache de thumbnails
+ - Fornecer ícones genéricos para tipos de arquivo
+ - Classes principais: FileListDelegate (delegate para listas), ThumbnailManager (geração), ThumbnailCache (cache)
+ 
+'''
+from PyQt6.QtCore import QRect, QRunnable
 from PyQt6.QtCore import Qt, QSize, pyqtSignal
 from PyQt6.QtGui import QPixmap, QFont, QPainter, QBrush, QColor, QImage
 from PyQt6.QtWidgets import QStyledItemDelegate, QStyle
@@ -24,6 +25,15 @@ except ImportError:
     pass
 
 THUMBNAIL_CACHE_DIR = 'assets/thumbnail_cache'
+
+
+class ThumbnailTask(QRunnable):
+    def __init__(self, worker):
+        super().__init__()
+        self.worker = worker
+
+    def run(self):
+        self.worker.run()
 
 
 class ThumbnailWorker(QObject):
@@ -183,6 +193,7 @@ class FileListDelegate(QStyledItemDelegate):
             grid_size = parent_view.gridSize()
             return grid_size
         return QSize(option.rect.width(), 60)
+
 
 class ThumbnailManager:
 
@@ -487,8 +498,8 @@ class ThumbnailManager:
             return None
 
     def get_generic_thumbnail(mime_type, size=(48, 48)):
-        icon_dir = os.path.join(os.path.dirname(
-            os.path.dirname(__file__)), "assets", "icons")
+        icon_dir = os.path.abspath(os.path.join(
+            os.path.dirname(__file__), '..', '..', 'assets', 'icons'))
 
         icon_map = {
             'folder': 'folder.png',
@@ -529,6 +540,7 @@ class ThumbnailManager:
             painter.drawRect(0, 0, size[0], size[1])
             painter.end()
             return pixmap
+
 
 class ThumbnailCache:
     @staticmethod

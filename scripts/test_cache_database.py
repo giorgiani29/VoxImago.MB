@@ -1,7 +1,10 @@
-# Teste de cache do banco de dados
+"""
+Script de teste de cache - Valida performance e funcionamento do sistema de cache do banco
+Testa: cache de count_files e load_files_paged para otimização de consultas
+"""
 
-from src.database import FileIndexer
-from src.search import SearchEngine
+from database.database import FileIndexer
+from database.search import SearchEngine
 import time
 import sys
 import os

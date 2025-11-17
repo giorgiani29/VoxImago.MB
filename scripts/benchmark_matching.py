@@ -1,8 +1,10 @@
-# Benchmark de performance para operações de matching e busca
+"""
+Script de benchmark - Mede performance das operações críticas de matching e busca
+Testa: tempo de execução de count_files e load_files_paged
+"""
 
-
-from src.database import FileIndexer
-from src.search import SearchEngine
+from database.database import FileIndexer
+from database.search import SearchEngine
 import time
 import sys
 import os
